@@ -142,6 +142,14 @@ Arena on 2026-10-14 with three runners (Opus, Fable, Sonnet) and a Fable cross-j
 ## Implementation reconciliation
 
 - Blackboard does not HTML-escape course names or titles; the `&amp;` seen during grounding was a display artifact. API strings pass through unchanged, and entity decoding happens only where HTML is parsed (the `data-bbfile` attribute in document bodies).
+- A bbcswebdav file downloads with the cookie session alone at its path without the signed query string (verified live: the full PDF). `Attachment` stores that unsigned path, which does not expire, so the "re-walk and retry once on an expired signed URL" graft is dropped.
+- `calendars/items` rejects ranges over 16 weeks with HTTP 400 ("since and until cannot span more than 16 weeks"); `Due` splits wider windows into 16-week requests and dedupes items by id. The default window is one day back through 14 days ahead.
+- `due list` leaves out items from dropped courses (membership availability "Disabled"), the same courses whose gradebook columns return 403.
+- Some `data-bbfile` links lack `data-bbtype="attachment"`, `fileName`, and `fileSize` (seen on a syllabus). Any `<a data-bbfile>` pointing at `/bbcswebdav/` counts; the name falls back to `displayName` then `linkName`, and with no size the skip rule compares mtime alone.
+- The skip-rule mtime is the `modified` time of the body that links the file (the `ultraDocumentBody` child), not the folder's, which changes whenever the outline is reordered.
+- `content download` with no ids requires `--all`. `--match` and `--force` and `WalkOptions.Depth` are not built.
+- An HTML page served where a non-HTML file was expected is a failed file (exit 6), not exit 4: the walk that just succeeded proves the session works.
+- The HTTP client bounds the wait for response headers (20 s) instead of the whole exchange, so large files are not cut off, and it drops `X-Blackboard-XSRF` on a redirect to another host.
 
 ## Open questions and risks
 

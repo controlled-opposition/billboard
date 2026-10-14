@@ -12,6 +12,7 @@ package bb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -58,12 +59,12 @@ func WithMaxRequests(n int) Option { return func(c *Client) { c.budget.max = n }
 // WithClock replaces time.Now for deciding which courses are current.
 func WithClock(now func() time.Time) Option { return func(c *Client) { c.now = now } }
 
-// New defaults to https://blackboard.wm.edu, 20s timeout, read-only,
+// New defaults to https://blackboard.wm.edu, a 20s wait for response headers, read-only,
 // DefaultMaxRequests, one request per 250ms.
 func New(s Sessions, opts ...Option) *Client {
 	c := &Client{
 		base:     &url.URL{Scheme: "https", Host: "blackboard.wm.edu"},
-		http:     &http.Client{Timeout: 20 * time.Second},
+		http:     &http.Client{Transport: transport(), CheckRedirect: keepXSRFOnHost},
 		sessions: s,
 		budget:   &budget{interval: 250 * time.Millisecond, max: DefaultMaxRequests},
 		now:      time.Now,
@@ -72,6 +73,26 @@ func New(s Sessions, opts ...Option) *Client {
 		o(c)
 	}
 	return c
+}
+
+// transport bounds the wait for response headers, not the whole exchange:
+// an http.Client.Timeout would also cut off a large file mid-download.
+func transport() http.RoundTripper {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = 20 * time.Second
+	return t
+}
+
+// keepXSRFOnHost drops the XSRF header when a redirect leaves the original
+// host. Go already drops the Cookie header there, but not custom headers.
+func keepXSRFOnHost(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if req.URL.Host != via[0].URL.Host {
+		req.Header.Del("X-Blackboard-XSRF")
+	}
+	return nil
 }
 
 // resolve turns a server-relative reference ("/learn/api/...?x=y", or a
