@@ -40,9 +40,9 @@ func (f dueFlags) window() (bb.Window, error) { panic("not implemented") }
 //	bb due list --since -3d --until 7d  # include recently passed
 //	bb due list --course math101 --json title,due,kind
 func newDueCmd(e *env) *cobra.Command {
-	cmd := &cobra.Command{Use: "due", Short: "Upcoming due dates"}
+	cmd := &cobra.Command{Use: "due", Short: "Upcoming due dates", Hidden: true}
 	cmd.AddCommand(newDueListCmd(e))
 	return cmd
 }
 
-func newDueListCmd(e *env) *cobra.Command { panic("not implemented") }
+func newDueListCmd(e *env) *cobra.Command { return notImplemented("list", "List due dates") }

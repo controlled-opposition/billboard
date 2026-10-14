@@ -1,5 +1,7 @@
 package bb
 
+import "regexp"
+
 // Blackboard primary keys look like "_12345_1". Distinct named types keep a
 // course id from being passed where a content id is expected; the compiler
 // catches the swap that the API would answer with a confusing 404.
@@ -10,7 +12,10 @@ type (
 	ColumnID  string // gradebook column; calendar item ids are column ids
 )
 
+var pkPattern = regexp.MustCompile(`^_\d+_\d+$`)
+
 // ParseCourseID accepts only the "_<digits>_<digits>" form. Human course
 // codes go through ResolveCourse instead.
-func ParseCourseID(s string) (CourseID, bool)   { panic("not implemented") }
-func ParseContentID(s string) (ContentID, bool) { panic("not implemented") }
+func ParseCourseID(s string) (CourseID, bool) { return CourseID(s), pkPattern.MatchString(s) }
+
+func ParseContentID(s string) (ContentID, bool) { return ContentID(s), pkPattern.MatchString(s) }

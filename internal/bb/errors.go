@@ -1,6 +1,9 @@
 package bb
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Kind classifies failures by what the caller should do next. The CLI maps
 // Kind (plus auth.ErrNeedsHuman) to exit codes in exactly one switch.
@@ -21,6 +24,14 @@ type APIError struct {
 	Candidates []Course // only for KindAmbiguous
 }
 
-func (e *APIError) Error() string { panic("not implemented") }
+func (e *APIError) Error() string {
+	if e.Status != 0 {
+		return fmt.Sprintf("HTTP %d: %s", e.Status, e.Message)
+	}
+	return e.Message
+}
 
-var ErrWriteRefused = errors.New("bb: write request refused; client is read-only")
+var ErrWriteRefused = errors.New("write request refused; bb is read-only")
+
+// ErrRequestCap is returned once a process has used its --max-requests.
+var ErrRequestCap = errors.New("request cap reached; raise it with --max-requests if this walk really needs more")

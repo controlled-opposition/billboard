@@ -41,7 +41,7 @@ func filesJSON(as []bb.Attachment) any { panic("not implemented") }
 func errString(err error) string       { panic("not implemented") }
 
 func newContentCmd(e *env) *cobra.Command {
-	cmd := &cobra.Command{Use: "content", Short: "Course materials"}
+	cmd := &cobra.Command{Use: "content", Short: "Course materials", Hidden: true}
 	cmd.AddCommand(newContentListCmd(e), newContentDownloadCmd(e))
 	return cmd
 }
@@ -49,7 +49,7 @@ func newContentCmd(e *env) *cobra.Command {
 // bb content list COURSE [--under ID] [--depth N] [--kind K]... [--files-only]
 // One row per visible node, depth-first. --files-only keeps nodes with at
 // least one attachment (the agent's "what can I download" view).
-func newContentListCmd(e *env) *cobra.Command { panic("not implemented") }
+func newContentListCmd(e *env) *cobra.Command { return notImplemented("list COURSE", "List course materials") }
 
 // bb content download COURSE [ID...] [--dir D] [--match GLOB] [--dry-run] [--force]
 //
@@ -59,4 +59,6 @@ func newContentListCmd(e *env) *cobra.Command { panic("not implemented") }
 // files of the expected size are reported "skipped". --dry-run prints the
 // plan with status "planned" and makes only the walk requests.
 // Any failed file -> exit 6 after all others are attempted.
-func newContentDownloadCmd(e *env) *cobra.Command { panic("not implemented") }
+func newContentDownloadCmd(e *env) *cobra.Command {
+	return notImplemented("download COURSE [ID...]", "Download course files")
+}

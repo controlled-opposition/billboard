@@ -1,0 +1,45 @@
+package cli
+
+import (
+	"io"
+	"net/http"
+	"strings"
+
+	"github.com/cli/go-gh/v2/pkg/jq"
+	"github.com/spf13/cobra"
+)
+
+func newAPICmd(e *env) *cobra.Command {
+	var expr string
+	cmd := &cobra.Command{
+		Use:   "api <path>",
+		Short: "GET a Blackboard REST path with the stored session",
+		Long: `GET a path on blackboard.wm.edu with the stored session and write the raw
+response body to stdout. Renewal, pacing, the request cap, and exit codes
+work as in every other command. Paths outside the Blackboard host are
+refused, so the session cookie never leaves it.
+
+Examples:
+  bb api /learn/api/public/v1/users/me
+  bb api /learn/api/public/v1/terms --jq '.results[].name'`,
+		Args: positional(cobra.ExactArgs(1)),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			path := args[0]
+			if !strings.HasPrefix(path, "/") {
+				path = "/" + path
+			}
+			body, err := e.client().Raw(cmd.Context(), http.MethodGet, path)
+			if err != nil {
+				return err
+			}
+			defer body.Close()
+			if expr != "" {
+				return jq.Evaluate(body, e.streams.Out, expr)
+			}
+			_, err = io.Copy(e.streams.Out, body)
+			return err
+		},
+	}
+	cmd.Flags().StringVarP(&expr, "jq", "q", "", "filter the response with a jq `expression`")
+	return cmd
+}
