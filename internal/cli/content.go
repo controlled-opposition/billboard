@@ -49,7 +49,9 @@ func newContentCmd(e *env) *cobra.Command {
 // bb content list COURSE [--under ID] [--depth N] [--kind K]... [--files-only]
 // One row per visible node, depth-first. --files-only keeps nodes with at
 // least one attachment (the agent's "what can I download" view).
-func newContentListCmd(e *env) *cobra.Command { return notImplemented("list COURSE", "List course materials") }
+func newContentListCmd(e *env) *cobra.Command {
+	return notImplemented("list COURSE", "List course materials")
+}
 
 // bb content download COURSE [ID...] [--dir D] [--match GLOB] [--dry-run] [--force]
 //

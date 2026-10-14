@@ -167,7 +167,26 @@ func newRoot(e *env) *cobra.Command {
 		newDueCmd(e),
 		newContentCmd(e),
 	)
+	rejectUnknownSubcommands(root)
 	return root
+}
+
+// rejectUnknownSubcommands makes "bb course lst" a usage error. cobra
+// prints help and succeeds for an unknown subcommand of a group, which an
+// agent would read as success.
+func rejectUnknownSubcommands(c *cobra.Command) {
+	for _, sub := range c.Commands() {
+		rejectUnknownSubcommands(sub)
+	}
+	if !c.HasSubCommands() || c.Runnable() {
+		return
+	}
+	c.RunE = func(c *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return usageError{fmt.Sprintf("unknown command %q for %q", args[0], c.CommandPath())}
+		}
+		return c.Help()
+	}
 }
 
 // positional wraps a cobra.PositionalArgs so its failures are usage errors.

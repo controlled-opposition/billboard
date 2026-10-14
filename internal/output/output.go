@@ -119,7 +119,11 @@ func Print[T any](st Streams, s Schema[T], o *Options, rows []T) error {
 		}
 		return nil
 	}
-	tp := tableprinter.New(st.Out, st.OutTTY, st.Width)
+	width := st.Width
+	if width <= 0 {
+		width = 80
+	}
+	tp := tableprinter.New(st.Out, st.OutTTY, width)
 	if st.OutTTY {
 		header := make([]string, len(s.Default))
 		for i, n := range s.Default {
