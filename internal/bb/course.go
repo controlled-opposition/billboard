@@ -3,7 +3,6 @@ package bb
 import (
 	"context"
 	"fmt"
-	"html"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,7 +13,7 @@ import (
 type Course struct {
 	ID      CourseID // "_12345_1"
 	Code    string   // "MATH101-01-F26" (course.courseId)
-	Name    string   // HTML-unescaped: "Calculus & Analysis"
+	Name    string   // "Calculus & Analysis"
 	Term    string   // "Fall 2026"; "" when the course has no term
 	Role    string   // "Student", "Instructor", ...
 	Current bool     // see isCurrent
@@ -148,11 +147,11 @@ type wireTerm struct {
 	Name string `json:"name"`
 }
 
-// parseCourses is pure: wire -> domain, html.UnescapeString on every name.
+// parseCourses is pure: wire -> domain.
 func parseCourses(ms []wireMembership, terms []wireTerm, now time.Time) []Course {
 	termName := make(map[string]string, len(terms))
 	for _, t := range terms {
-		termName[t.ID] = html.UnescapeString(t.Name)
+		termName[t.ID] = t.Name
 	}
 	out := make([]Course, 0, len(ms))
 	for _, m := range ms {
@@ -161,7 +160,7 @@ func parseCourses(ms []wireMembership, terms []wireTerm, now time.Time) []Course
 		out = append(out, Course{
 			ID:      CourseID(m.Course.ID),
 			Code:    m.Course.CourseID,
-			Name:    html.UnescapeString(m.Course.Name),
+			Name:    m.Course.Name,
 			Term:    term,
 			Role:    m.CourseRoleID,
 			Current: isCurrent(term, open, now),

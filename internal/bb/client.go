@@ -1,6 +1,6 @@
 // Package bb is the deep module: everything bb knows about Blackboard Learn
 // Ultra at W&M lives here. Callers get domain types (Course, DueItem,
-// ContentNode, Attachment) with HTML-unescaped strings and time.Time values.
+// ContentNode, Attachment) with parsed time.Time values.
 // Wire structs, endpoint paths, paging, the Ultra "ultraDocumentBody" fold,
 // data-bbfile parsing, and 401-then-renew are all unexported.
 //
@@ -13,7 +13,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -235,12 +234,12 @@ func (c *Client) Me(ctx context.Context) (User, error) {
 	return User{
 		ID:       UserID(w.ID),
 		UserName: w.UserName,
-		Name:     html.UnescapeString(strings.TrimSpace(w.Name.Given + " " + w.Name.Family)),
+		Name:     strings.TrimSpace(w.Name.Given + " " + w.Name.Family),
 	}, nil
 }
 
 type User struct {
 	ID       UserID
 	UserName string // NetID
-	Name     string // given + family, unescaped
+	Name     string // given + family
 }

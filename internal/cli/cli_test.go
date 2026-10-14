@@ -24,7 +24,7 @@ const (
 
 	membershipsPage1 = `{"results":[
 		{"courseId":"_501_1","courseRoleId":"Student","availability":{"available":"Yes"},
-		 "course":{"id":"_501_1","courseId":"SOC101-01-F26","name":"Data &amp; Society","termId":"_10_1",
+		 "course":{"id":"_501_1","courseId":"SOC101-01-F26","name":"Data & Society","termId":"_10_1",
 		           "externalAccessUrl":"https://bb.example/ultra/courses/_501_1/outline","availability":{"available":"Yes"}}},
 		{"courseId":"_502_1","courseRoleId":"Student","availability":{"available":"Yes"},
 		 "course":{"id":"_502_1","courseId":"MATH211-01-F26","name":"Linear Algebra","termId":"_10_1",
@@ -168,7 +168,7 @@ func expect(t *testing.T, gotCode int, gotOut, gotErr string, wantCode int, want
 	}
 }
 
-func TestCourseListTSVPagesAndUnescapes(t *testing.T) {
+func TestCourseListTSVPages(t *testing.T) {
 	h := newHarness(t, "x1", "x1")
 	h.login()
 	code, out, errOut := h.run(nil, "course", "list")

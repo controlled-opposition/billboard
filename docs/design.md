@@ -141,7 +141,7 @@ Arena on 2026-10-14 with three runners (Opus, Fable, Sonnet) and a Fable cross-j
 
 ## Implementation reconciliation
 
-None yet.
+- Blackboard does not HTML-escape course names or titles; the `&amp;` seen during grounding was a display artifact. API strings pass through unchanged, and entity decoding happens only where HTML is parsed (the `data-bbfile` attribute in document bodies).
 
 ## Open questions and risks
 
