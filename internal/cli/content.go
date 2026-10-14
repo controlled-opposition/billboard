@@ -31,7 +31,7 @@ var fetchSchema = output.Schema[bb.FetchResult]{
 		{Name: "size", Doc: "bytes", Value: func(r bb.FetchResult) any { return r.Attachment.Size }},
 		{Name: "mimeType", Doc: "MIME type", Value: func(r bb.FetchResult) any { return r.Attachment.MimeType }},
 		{Name: "contentId", Doc: "content item the file belongs to", Value: func(r bb.FetchResult) any { return r.Attachment.Source }},
-		{Name: "course", Doc: "object: id, code, name", Value: func(r bb.FetchResult) any { return courseJSON(r.Course) }},
+		{Name: "course", Doc: "object: id, code, name", Value: func(r bb.FetchResult) any { return refOf(r.Course) }},
 		{Name: "error", Doc: "failure message, empty unless failed", Value: func(r bb.FetchResult) any { return errString(r.Err) }},
 	},
 	Default: []string{"status", "path"},

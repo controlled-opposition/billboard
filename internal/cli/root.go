@@ -56,6 +56,7 @@ type env struct {
 	auth        *auth.Manager
 	clientOpts  []bb.Option
 	maxRequests int
+	now         func() time.Time
 	c           *bb.Client
 }
 
@@ -89,6 +90,7 @@ func newEnv(x Env) (*env, error) {
 			NoRenew: x.Getenv("BB_NO_RENEW") == "1",
 		}),
 		clientOpts: []bb.Option{bb.WithClock(x.Now)},
+		now:        x.Now,
 	}
 	if x.BaseURL != "" {
 		u, err := url.Parse(x.BaseURL)

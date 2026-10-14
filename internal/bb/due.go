@@ -2,6 +2,10 @@ package bb
 
 import (
 	"context"
+	"errors"
+	"net/url"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -9,9 +13,14 @@ import (
 // which rejects Until <= Since, so methods never re-check it.
 type Window struct{ since, until time.Time }
 
-func NewWindow(since, until time.Time) (Window, error) { panic("not implemented") }
-func (w Window) Since() time.Time                      { return w.since }
-func (w Window) Until() time.Time                      { return w.until }
+func NewWindow(since, until time.Time) (Window, error) {
+	if !until.After(since) {
+		return Window{}, errors.New("--until must be after --since")
+	}
+	return Window{since, until}, nil
+}
+func (w Window) Since() time.Time { return w.since }
+func (w Window) Until() time.Time { return w.until }
 
 // DueKind is what the calendar says the item is. Blackboard's eventType is
 // mapped here once; unknown values become DueOther with the raw string kept
@@ -25,13 +34,22 @@ const (
 	DueOther      DueKind = "other"
 )
 
+// DueKinds is every DueKind in display order; help text is built from it.
+var DueKinds = []DueKind{DueTest, DueAssignment, DueManual, DueOther}
+
+var dueKindByEventType = map[string]DueKind{
+	"Test":                DueTest,
+	"Assignment":          DueAssignment,
+	"Manual Grade Column": DueManual,
+}
+
 // DueItem is one dated gradable thing. Submission state is deliberately
 // absent: no probed endpoint reports it, and a field that is always
 // "unknown" teaches agents to ignore it. Add Submitted when attempts are
 // wired, as a new JSON field (additive, non-breaking).
 type DueItem struct {
 	Course      Course // joined from Courses by calendarId; Code/Name usable directly
-	Title       string // unescaped
+	Title       string
 	Due         time.Time
 	Kind        DueKind
 	RawType     string // Blackboard eventType verbatim, for DueOther and debugging
@@ -45,28 +63,105 @@ type DueFilter struct {
 	Courses []CourseID // empty = all
 }
 
+// calendarSpan is the widest range one calendar request may ask for; wider
+// windows are split. Blackboard answers 400 "since and until cannot span
+// more than 16 weeks" beyond it.
+const calendarSpan = 16 * 7 * 24 * time.Hour
+
 // Due reads GET /learn/api/public/v1/calendars/items?since&until (the one
 // source that answered 200 for every course; gradebook columns 403 in some),
-// splitting the window into chunks if Blackboard caps the range, joins each
-// item to a Course, and returns items sorted by Due then Course.Code.
-// Items whose calendarId is not a known course (personal/institution
-// calendars) are dropped.
+// joins each gradebook item to a Course, and returns items sorted by Due
+// then Course.Code. Items from dropped courses are left out.
 //
 // courses comes from Courses so a command pays for the list once.
 func (c *Client) Due(ctx context.Context, courses []Course, f DueFilter) ([]DueItem, error) {
-	panic("not implemented")
+	var wire []wireCalendarItem
+	for from := f.Window.since; from.Before(f.Window.until); from = from.Add(calendarSpan) {
+		to := from.Add(calendarSpan)
+		if to.After(f.Window.until) {
+			to = f.Window.until
+		}
+		q := url.Values{"since": {from.UTC().Format(time.RFC3339)}, "until": {to.UTC().Format(time.RFC3339)}}
+		items, err := getPaged[wireCalendarItem](ctx, c, "/learn/api/public/v1/calendars/items?"+q.Encode())
+		if err != nil {
+			return nil, err
+		}
+		wire = append(wire, items...)
+	}
+	items := parseDue(wire, courses)
+	if len(f.Courses) > 0 {
+		items = slices.DeleteFunc(items, func(d DueItem) bool { return !slices.Contains(f.Courses, d.Course.ID) })
+	}
+	return items, nil
 }
 
 type wireCalendarItem struct {
-	ID         string `json:"id"`
-	Type       string `json:"type"` // "GradebookColumn"
-	CalendarID string `json:"calendarId"`
-	Title      string `json:"title"`
-	End        string `json:"end"`
-	Dynamic    struct {
+	ID           string `json:"id"`
+	Type         string `json:"type"` // "GradebookColumn"
+	CalendarID   string `json:"calendarId"`
+	CalendarName string `json:"calendarName"` // "MATH101-01-F26: Applied ... (Fall 2026)"
+	Title        string `json:"title"`
+	End          string `json:"end"`
+	Dynamic      struct {
 		EventType   string `json:"eventType"`
 		Attemptable bool   `json:"attemptable"`
 	} `json:"dynamicCalendarItemProps"`
 }
 
-func parseDue(items []wireCalendarItem, byID map[CourseID]Course) []DueItem { panic("not implemented") }
+// parseDue keeps gradebook items (other calendar types are class meetings
+// and personal events, not things that are due), dedupes items that two
+// window chunks both returned, and drops items of dropped courses
+// (membership "Disabled"). A calendarId missing from courses falls back to
+// the course named in calendarName rather than vanishing.
+func parseDue(items []wireCalendarItem, courses []Course) []DueItem {
+	byID := make(map[CourseID]Course, len(courses))
+	for _, c := range courses {
+		byID[c.ID] = c
+	}
+	seen := map[string]bool{}
+	var out []DueItem
+	for _, w := range items {
+		if w.Type != "GradebookColumn" || seen[w.ID] {
+			continue
+		}
+		seen[w.ID] = true
+		course, known := byID[CourseID(w.CalendarID)]
+		if known && !course.Open {
+			continue
+		}
+		if !known {
+			course = courseFromCalendarName(CourseID(w.CalendarID), w.CalendarName)
+		}
+		kind, ok := dueKindByEventType[w.Dynamic.EventType]
+		if !ok {
+			kind = DueOther
+		}
+		due, _ := time.Parse(time.RFC3339, w.End)
+		out = append(out, DueItem{
+			Course:      course,
+			Title:       w.Title,
+			Due:         due.UTC(),
+			Kind:        kind,
+			RawType:     w.Dynamic.EventType,
+			Attemptable: w.Dynamic.Attemptable,
+			ColumnID:    ColumnID(w.ID),
+		})
+	}
+	slices.SortStableFunc(out, func(a, b DueItem) int {
+		if c := a.Due.Compare(b.Due); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Course.Code, b.Course.Code)
+	})
+	return out
+}
+
+// courseFromCalendarName parses "CODE: Name (Term)".
+func courseFromCalendarName(id CourseID, name string) Course {
+	code, rest, _ := strings.Cut(name, ": ")
+	c := Course{ID: id, Code: code, Name: rest}
+	if i := strings.LastIndex(rest, " ("); i >= 0 && strings.HasSuffix(rest, ")") {
+		c.Name, c.Term = rest[:i], rest[i+2:len(rest)-1]
+	}
+	return c
+}

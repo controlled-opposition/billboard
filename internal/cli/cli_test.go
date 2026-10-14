@@ -73,12 +73,13 @@ type harness struct {
 	srv      *httptest.Server
 	dir      string
 	keyring  *memKeyring
-	valid    string   // the xsrf the server accepts
-	xsrfs    []string // sessions the fake Chrome yields, in order
-	launches []string // "visible" or "headless", per Chrome launch
-	requests []string // request URIs the server saw
-	cookies  []string // Cookie headers the server saw
-	tty      bool     // stdout is a terminal of unknown width
+	valid    string            // the xsrf the server accepts
+	xsrfs    []string          // sessions the fake Chrome yields, in order
+	launches []string          // "visible" or "headless", per Chrome launch
+	requests []string          // request URIs the server saw
+	cookies  []string          // Cookie headers the server saw
+	tty      bool              // stdout is a terminal of unknown width
+	routes   map[string]string // extra responses by request URI
 }
 
 func newHarness(t *testing.T, valid string, xsrfs ...string) *harness {
@@ -111,6 +112,10 @@ func (h *harness) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		fmt.Fprint(w, forbiddenJSON)
 	default:
+		if body, ok := h.routes[r.URL.RequestURI()]; ok {
+			fmt.Fprint(w, body)
+			return
+		}
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprint(w, `{"status":404,"message":"Not found"}`)
 	}

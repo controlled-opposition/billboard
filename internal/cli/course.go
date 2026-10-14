@@ -1,16 +1,34 @@
 package cli
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/controlled-opposition/billboard/internal/bb"
 	"github.com/controlled-opposition/billboard/internal/output"
 )
 
-// courseJSON is shared by every schema that embeds a course (due items,
-// download results) so "course" means the same object everywhere.
-func courseJSON(c bb.Course) any {
-	return map[string]any{"id": c.ID, "code": c.Code, "name": c.Name}
+// courseRef is how every schema that embeds a course (due items, download
+// results) renders it: the code in TSV and tables, {code, id, name} in JSON.
+type courseRef struct {
+	Code string      `json:"code"`
+	ID   bb.CourseID `json:"id"`
+	Name string      `json:"name"`
+}
+
+func refOf(c bb.Course) courseRef { return courseRef{Code: c.Code, ID: c.ID, Name: c.Name} }
+
+func (c courseRef) String() string { return c.Code }
+
+// joinKinds renders an enum's values for help text, so help is derived
+// from the constants and cannot drift from them.
+func joinKinds[T ~string](ks []T) string {
+	s := make([]string, len(ks))
+	for i, k := range ks {
+		s[i] = string(k)
+	}
+	return strings.Join(s, " | ")
 }
 
 var courseSchema = output.Schema[bb.Course]{
