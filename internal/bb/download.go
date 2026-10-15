@@ -93,7 +93,7 @@ type FetchResult struct {
 	Planned
 	Path   string // absolute path on disk
 	Status FetchStatus
-	Bytes  int64
+	Bytes  int64 // size on disk when downloaded or skipped
 	Err    error // non-nil iff Status == FetchFailed
 }
 
@@ -112,7 +112,7 @@ func (p Planned) Check(dir string) FetchResult {
 	// Seconds only: some filesystems store coarser mtimes than Blackboard's milliseconds.
 	if (a.Size == 0 || st.Size() == a.Size) &&
 		(a.Modified.IsZero() || st.ModTime().Truncate(time.Second).Equal(a.Modified.Truncate(time.Second))) {
-		r.Status = FetchSkipped
+		r.Status, r.Bytes = FetchSkipped, st.Size()
 	}
 	return r
 }
