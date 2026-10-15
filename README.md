@@ -9,12 +9,16 @@ billboard is named after the famous Super Mario character [Bill Board.](https://
 
 ## Workflow
 
-Build `bb` with Nix from a clone:
+Run `bb` with Nix, without installing it:
 
 ```sh
-git clone git@github.com:controlled-opposition/billboard.git
-cd billboard
-nix build            # puts the binary at ./result/bin/bb
+nix run github:controlled-opposition/billboard -- --help
+```
+
+To put `bb` on your `PATH`, install it into your profile:
+
+```sh
+nix profile install github:controlled-opposition/billboard
 ```
 
 1. Log in once. `bb auth login` opens Chrome for your NetID and MFA, then stores the session in the macOS Keychain.
