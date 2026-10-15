@@ -93,7 +93,7 @@ func TestGradeListJSON(t *testing.T) {
 		"--json", "course,title,status,score,possible,display,feedback,due,kind,counted,columnId",
 		"--jq", `.[] | select(.title == "Problem Set 3" or .title == "Overall Grade" or .title == "Peer Review")`)
 	expect(t, code, out, errOut, 0,
-		`{"columnId":"_9001_1","counted":true,"course":{"code":"MATH211-01-F26","id":"_502_1","name":"Linear Algebra"},"display":"","due":"2026-10-01T03:59:00Z","feedback":"Show the row reduction `+"\x5cu0026"+` check signs. See Theorem 2.","kind":"attempts","possible":10,"score":4,"status":"graded","title":"Problem Set 3"}`+"\n"+
+		`{"columnId":"_9001_1","counted":true,"course":{"code":"MATH211-01-F26","id":"_502_1","name":"Linear Algebra"},"display":"","due":"2026-10-01T03:59:00Z","feedback":"Show the row reduction & check signs. See Theorem 2.","kind":"attempts","possible":10,"score":4,"status":"graded","title":"Problem Set 3"}`+"\n"+
 			`{"columnId":"_9009_1","counted":true,"course":{"code":"MATH211-01-F26","id":"_502_1","name":"Linear Algebra"},"display":"","due":"2026-10-25T03:59:00Z","feedback":"","kind":"other","possible":10,"score":null,"status":"none","title":"Peer Review"}`+"\n"+
 			`{"columnId":"_9008_1","counted":false,"course":{"code":"MATH211-01-F26","id":"_502_1","name":"Linear Algebra"},"display":"A-","due":null,"feedback":"","kind":"calculated","possible":100,"score":93,"status":"graded","title":"Overall Grade"}`+"\n", "")
 }
@@ -129,4 +129,13 @@ func TestGradeListAbortsOnUnavailable(t *testing.T) {
 		columnsURI("_503_1"),
 		myGradesURI("_503_1"),
 	)...)
+}
+
+func TestGradeListJQKeepsScorePrecision(t *testing.T) {
+	h := newHarness(t, "x1", "x1")
+	h.routes = gradeRoutes()
+	h.routes[myGradesURI("_501_1")] = `{"results":[{"userId":"_901_1","columnId":"_9101_1","status":"Graded","score":18.375,"exempt":false}]}`
+	h.login()
+	code, out, errOut := h.run(nil, "grade", "list", "soc101", "--json", "score", "--jq", ".[].score")
+	expect(t, code, out, errOut, 0, "18.375\n", "")
 }

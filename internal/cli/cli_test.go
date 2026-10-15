@@ -229,6 +229,19 @@ func TestCourseListJQ(t *testing.T) {
 	expect(t, code, out, errOut, 0, "SOC101-01-F26\n", "")
 }
 
+func TestJQPrintsObjectsUnescapedAndScalarsRaw(t *testing.T) {
+	h := newHarness(t, "x1", "x1")
+	h.login()
+	code, out, errOut := h.run(nil, "course", "list", "--json", "code,name", "--jq", `.[] | select(.code == "SOC101-01-F26")`)
+	expect(t, code, out, errOut, 0, `{"code":"SOC101-01-F26","name":"Data & Society"}`+"\n", "")
+
+	code, out, errOut = h.run(nil, "api", "/learn/api/public/v1/users/_901_1/courses?expand=course", "--jq", `.results[0].course | {name}`)
+	expect(t, code, out, errOut, 0, `{"name":"Data & Society"}`+"\n", "")
+
+	code, out, errOut = h.run(nil, "course", "list", "--all", "--json", "code,current", "--jq", `.[0] | .current, null, .code, 3, 18.375, [.code, "<a>"]`)
+	expect(t, code, out, errOut, 0, "true\n\nMATH211-01-F26\n3\n18.375\n"+`["MATH211-01-F26","<a>"]`+"\n", "")
+}
+
 func TestAmbiguousCourseListsCandidates(t *testing.T) {
 	h := newHarness(t, "x1", "x1")
 	h.login()
