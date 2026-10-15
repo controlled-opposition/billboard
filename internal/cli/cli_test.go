@@ -330,6 +330,18 @@ func TestAPIRefusesOtherHosts(t *testing.T) {
 	}
 }
 
+func TestHelpTopicMatchesCommandHelp(t *testing.T) {
+	h := newHarness(t, "x1", "x1")
+	for _, topic := range [][]string{nil, {"course"}, {"course", "list"}} {
+		code, out, errOut := h.run(nil, append([]string{"help"}, topic...)...)
+		_, want, _ := h.run(nil, append(topic, "--help")...)
+		expect(t, code, out, errOut, 0, want, "")
+		if !strings.HasPrefix(out, "Usage:") && !strings.Contains(out, "\nUsage:\n") {
+			t.Errorf("help %v printed no usage:\n%s", topic, out)
+		}
+	}
+}
+
 func TestMaxRequestsStopsTheWalk(t *testing.T) {
 	h := newHarness(t, "x1", "x1")
 	h.login()
@@ -362,6 +374,7 @@ func TestStatusWithoutSessionAndIdempotentLogout(t *testing.T) {
 
 func TestUsageErrorsSendNothing(t *testing.T) {
 	h := newHarness(t, "x1", "x1")
+	h.login()
 	cases := []struct {
 		args []string
 		err  string
@@ -370,10 +383,19 @@ func TestUsageErrorsSendNothing(t *testing.T) {
 		{[]string{"course", "list", "--jq", ".[]"}, "bb: --jq and --template require --json\n"},
 		{[]string{"course", "lst"}, "bb: unknown command \"lst\" for \"bb course\"\n"},
 		{[]string{"api"}, "bb: accepts 1 arg(s), received 0\n"},
+		{[]string{"course", "list", "--json", "code", "--jq", ".["}, `bb: invalid jq expression ".[": unexpected EOF` + "\n"},
+		{[]string{"course", "list", "--json", "code", "--jq", "nosuch"}, `bb: invalid jq expression "nosuch": function not defined: nosuch/0` + "\n"},
+		{[]string{"course", "list", "--json", "code", "--template", "{{.x"}, `bb: invalid template "{{.x": template: :1: unclosed action` + "\n"},
+		{[]string{"api", "/learn/api/public/v1/users/me", "--jq", ".["}, `bb: invalid jq expression ".[": unexpected EOF` + "\n"},
+		{[]string{"course", "list", "--json="}, "bb: --json needs at least one field; available: id, code, name, term, role, current, url\n"},
+		{[]string{"--max-requests", "0", "course", "list"}, "bb: --max-requests must be at least 1\n"},
+		{[]string{"--max-requests", "-1", "api", "/learn/api/public/v1/users/me"}, "bb: --max-requests must be at least 1\n"},
+		{[]string{"help", "nosuch"}, `bb: unknown help topic "nosuch"` + "\n"},
+		{[]string{"help", "course", "nosuch"}, `bb: unknown help topic "course nosuch"` + "\n"},
 	}
 	for _, c := range cases {
 		code, out, errOut := h.run(nil, c.args...)
-		expect(t, code, out, errOut, 2, "", c.err)
+		t.Run(strings.Join(c.args, " "), func(t *testing.T) { expect(t, code, out, errOut, 2, "", c.err) })
 	}
 	if len(h.requests) != 0 {
 		t.Errorf("server saw %v, want none", h.requests)
