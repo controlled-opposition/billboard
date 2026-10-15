@@ -7,8 +7,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/cli/go-gh/v2/pkg/jq"
 	"github.com/spf13/cobra"
+
+	"github.com/controlled-opposition/billboard/internal/output"
 )
 
 func newAPICmd(e *env) *cobra.Command {
@@ -36,7 +37,11 @@ Examples:
 			}
 			defer body.Close()
 			if expr != "" {
-				return jq.Evaluate(body, e.streams.Out, expr)
+				q, err := output.ParseJQ(expr)
+				if err != nil {
+					return err
+				}
+				return q.Run(body, e.streams.Out)
 			}
 			_, err = io.Copy(e.streams.Out, body)
 			return err

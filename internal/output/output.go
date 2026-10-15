@@ -4,7 +4,7 @@
 //	non-TTY  -> tab-separated, one row per line, fixed default columns,
 //	            RFC 3339 UTC times, no header (stable for awk/cut)
 //	--json f -> JSON array of objects with exactly fields f
-//	--jq / --template -> applied to that JSON (go-gh pkg/jq, pkg/template)
+//	--jq / --template -> applied to that JSON (gojq, go-gh pkg/template)
 //
 // A command declares a Schema[T] once. The --json field list, its
 // validation, the TSV/table columns, and the "JSON FIELDS" section of
@@ -22,7 +22,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/cli/go-gh/v2/pkg/jq"
 	"github.com/cli/go-gh/v2/pkg/tableprinter"
 	"github.com/cli/go-gh/v2/pkg/template"
 	"github.com/spf13/cobra"
@@ -163,7 +162,11 @@ func printJSON[T any](st Streams, s Schema[T], o *Options, rows []T) error {
 	}
 	switch {
 	case o.JQ != "":
-		return jq.Evaluate(&buf, st.Out, o.JQ)
+		q, err := ParseJQ(o.JQ)
+		if err != nil {
+			return err
+		}
+		return q.Run(&buf, st.Out)
 	case o.Template != "":
 		t := template.New(st.Out, st.Width, false)
 		if err := t.Parse(o.Template); err != nil {
