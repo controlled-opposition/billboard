@@ -2,6 +2,7 @@ package bb
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -25,5 +26,17 @@ func TestPlanSuffixesNamesThatDifferOnlyByCase(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("RelPaths = %q, want %q", got, want)
+	}
+}
+
+func TestSegmentTrimsLongNamesBeforeTheExtension(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"ascii", strings.Repeat("x", 250) + ".pdf", strings.Repeat("x", 196) + ".pdf"},
+		{"multibyte stem", strings.Repeat("日", 90) + ".docx", strings.Repeat("日", 65) + ".docx"},
+	}
+	for _, c := range cases {
+		if got := segment(c.in); got != c.want {
+			t.Errorf("%s: segment = %q (%d bytes), want %q (%d bytes)", c.name, got, len(got), c.want, len(c.want))
+		}
 	}
 }
