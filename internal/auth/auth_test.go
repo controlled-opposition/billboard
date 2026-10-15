@@ -103,3 +103,50 @@ func TestRenewWithoutProfileNeedsHuman(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNeedsHuman", err)
 	}
 }
+
+func TestRenewDeadlineCoversBrowserSoWaiterRenews(t *testing.T) {
+	dir := t.TempDir()
+	kr := &memKeyring{}
+	a := NewManager(Options{Paths: PathsIn(dir), Keyring: kr, Browser: func(context.Context, BrowserRun) ([]*http.Cookie, error) {
+		return router("xsrf:first"), nil
+	}})
+	stale, err := a.Login(context.Background(), LoginOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.browser = func(ctx context.Context, r BrowserRun) ([]*http.Cookie, error) {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(10 * time.Second):
+			return router("xsrf:late"), nil
+		}
+	}
+	b := NewManager(Options{Paths: PathsIn(dir), Keyring: kr, Browser: func(context.Context, BrowserRun) ([]*http.Cookie, error) {
+		return router("xsrf:from-b"), nil
+	}})
+	a.renewTimeout = 200 * time.Millisecond
+	b.renewTimeout = 200 * time.Millisecond
+
+	start := time.Now()
+	aDone := make(chan time.Duration, 1)
+	go func() {
+		a.Renew(context.Background(), stale)
+		aDone <- time.Since(start)
+	}()
+	time.Sleep(50 * time.Millisecond)
+	got, errB := b.Renew(context.Background(), stale)
+	held := <-aDone
+
+	if held > 2*time.Second {
+		t.Errorf("wedged renewal held the lock for %s, want about 200ms", held.Round(time.Millisecond))
+	}
+	if errB != nil {
+		t.Fatalf("waiting process: %v, want the session it renewed", errB)
+	}
+	r := httptest.NewRequest("GET", "/", nil)
+	got.Apply(r)
+	if x := r.Header.Get("X-Blackboard-XSRF"); x != "from-b" {
+		t.Fatalf("xsrf = %q, want from-b", x)
+	}
+}
