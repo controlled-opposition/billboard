@@ -7,7 +7,7 @@
 - Login requires a human with MFA. The agent can only reuse that session, or renew it headlessly from the Chrome profile, and renewal is unproven. "Needs a human" must therefore be a first-class outcome.
 - Several `bb` processes can run at once, and they all share the keychain item and the Chrome profile.
 - Ultra stores data in ways the API does not describe. Documents are folders that contain a hidden `ultraDocumentBody` child. Files are `<a data-bbfile>` tags inside HTML bodies, and their bbcswebdav URLs are signed and expire. Course names are HTML-escaped.
-- Due dates come from only one source that worked for every course (the public `calendars/items`). Gradebook columns return 403 in 3 of 8 courses. No probed endpoint reports whether an item was submitted.
+- Due dates come from only one source that worked for every course (the public `calendars/items`). Gradebook columns return 403 in 3 of 8 courses. No probed endpoint reports whether an item was submitted. (Both gradebook facts were later revised. See Implementation reconciliation.)
 
 There is also a shared budget of 10k requests per day, and a full walk of one course takes about 60 requests.
 
@@ -21,7 +21,7 @@ $ bb course list
 MATH101-01-F26	Calculus & Analysis	Fall 2026
 ...
 $ bb due list --since -1d --until 10d
-2026-10-15T03:59:00Z	MATH101-01-F26	Problem Set 3	test
+2026-10-15T03:59:00Z	MATH101-01-F26	Problem Set 3	test	unsubmitted
 $ bb due list --course math101 --json title,due,kind --jq '.[] | select(.kind=="test") | .title'
 Problem Set 3
 $ bb content list math101 --files-only --json id,path,files
@@ -60,7 +60,7 @@ internal/auth/            Session (unforgeable), Manager (keychain + Chrome prof
 
 Any command can be traced through three files: `cli/<cmd>.go`, then `bb/<noun>.go`, then `bb/client.go`.
 
-**Data first.** The domain types are `Course`, `DueItem`, `ContentNode`, `Attachment`, `Planned`, and `FetchResult`. `ContentNode` is a flat row in depth-first order that carries `Path` and `Depth`. It is not a pointer tree. Every access pattern is a flat scan: list the rows, filter to nodes with files, plan paths, download. A flat slice serves all of these with no index. Named id types (`CourseID`, `ContentID`, `ColumnID`) stop an id of one kind from being passed where another is expected (per type-system-discipline).
+**Data first.** The domain types are `Course`, `DueItem`, `Grade`, `ContentNode`, `Attachment`, `Planned`, and `FetchResult`. `DueItem` and `Grade` share one `GradeStatus`. `ContentNode` is a flat row in depth-first order that carries `Path` and `Depth`. It is not a pointer tree. Every access pattern is a flat scan: list the rows, filter to nodes with files, plan paths, download. A flat slice serves all of these with no index. Named id types (`CourseID`, `ContentID`, `ColumnID`) stop an id of one kind from being passed where another is expected (per type-system-discipline).
 
 **Boundary.** Each `bb/<noun>.go` file holds that noun's unexported wire struct, a pure `parse*`, `fold`, or `extractAttachments` function, and the public method. HTML unescaping, time parsing, the `ultraDocumentBody` fold, and `data-bbfile` decoding all happen there, once (per boundary-discipline). The only wire access left is `Client.Raw`, which returns bytes for `bb api`.
 
@@ -86,12 +86,11 @@ No new method can skip this policy, because no other path to the network exists 
 - `Fetch` skips a file that already exists with the expected size, and writes through a temp file plus rename. Reruns and crashes therefore converge (per make-operations-idempotent).
 - `auth login` and `auth logout` are both idempotent.
 
-**Interface depth.** A command sees about seven calls: `Courses`, `ResolveCourse`, `Due`, `Walk`, `Plan`, `Fetch`, and `Raw`. Behind them sit paging, chunking of the calendar window, renewal with cross-process deduplication, the Ultra document fold, HTML attachment extraction, status mapping, and pacing. Output is one generic `Print` driven by a declarative schema. Adding a field means adding one line, and that line updates the help text too.
+**Interface depth.** A command sees about eight calls: `Courses`, `ResolveCourse`, `Due`, `Grades`, `Walk`, `Plan`, `Fetch`, and `Raw`. Behind them sit paging, chunking of the calendar window, renewal with cross-process deduplication, the Ultra document fold, HTML attachment extraction, status mapping, and pacing. Output is one generic `Print` driven by a declarative schema. Adding a field means adding one line, and that line updates the help text too.
 
 **Deliberately not done.**
 - No disk cache.
 - No concurrency inside a process, so pacing stays trivial and the budget stays safe.
-- No submission status.
 - No private `/learn/api/v1` endpoints except through `bb api`.
 
 ## Synthesis decision
@@ -119,7 +118,6 @@ Arena on 2026-10-14 with three runners (Opus, Fable, Sonnet) and a Fable cross-j
 - Fixtures: tests use synthetic JSON shaped like the captured responses. No captured personal data enters the repo.
 
 **Rejected.**
-- Candidate 3's always-on gradebook enrichment. It costs one request per course and returns 403 for 3 of 8 W&M courses. It may come back as `bb grade list`.
 - Candidate 3's `Backend` interface, a hand-synced copy of `Client`. Tests use `httptest` through `BaseURL`.
 - Candidate 2's exported `bb.Session` cookie fields, which leak the wire format.
 - Keychain fallbacks for other OSes. v1 is macOS-only, and go-keyring already covers Linux Secret Service if it is ever needed.
@@ -128,7 +126,9 @@ Arena on 2026-10-14 with three runners (Opus, Fable, Sonnet) and a Fable cross-j
 
 - We accept that every folder costs a children request in `Walk` in exchange for correct document folding. A folder can only be identified as an Ultra document from its children. The `Under` option plus the list-then-download-ids loop keeps the common case cheap.
 - We accept a pure `ResolveCourse` that needs the course list passed in (one extra request per command) in exchange for zero hidden fetches. This also gives the `Course` join that due items need.
-- We accept leaving submission status out of `DueItem`, which may look like an oversight. Every value would be "unknown" today. Adding the field later is non-breaking.
+- We accept one gradebook request per course with an item in the window on every `due list` (about 2 s more for 7 courses) in exchange for default output that answers "what have I not submitted". An opt-in flag would leave the common case blind.
+- We accept a fifth default TSV column on `due list`, `status`, which is a change to the CLI contract, in exchange for status being visible without `--json`. Scripts that read the first four fields keep working.
+- We accept the calendar's `attemptable` flag as the "can be submitted online" input for due items. If it ever disagrees with the column's `Attempts` grading type, an item shows `none` where `unsubmitted` is right. Reading the columns would cost another request per course.
 - We accept sequential, paced requests (a full course download is about 15s of walking) in exchange for no shared mutable state in the client and gentle use of the budget.
 - We accept a generic `output.Schema[T]` with `func(T) any` getters (losing some type safety at render time) in exchange for one source of truth across `--json`, TSV, the table view, and `--help`.
 - We accept that the default TSV view drops nested fields (`course` renders as its code, `files` as a count) in exchange for stable, awk-able lines. `--json` carries the full structure.
@@ -150,6 +150,12 @@ Arena on 2026-10-14 with three runners (Opus, Fable, Sonnet) and a Fable cross-j
 - `content download` with no ids requires `--all`. `--match` and `--force` and `WalkOptions.Depth` are not built.
 - An HTML page served where a non-HTML file was expected is a failed file (exit 6), not exit 4: the walk that just succeeded proves the session works.
 - The HTTP client bounds the wait for response headers (20 s) instead of the whole exchange, so large files are not cut off, and it drops `X-Blackboard-XSRF` on a redirect to another host.
+- Always-on gradebook enrichment, rejected by the arena because gradebook columns returned 403 for 3 of 8 courses, is back. Those 3 courses were dropped (membership availability "Disabled"), and `due list` already leaves them out. A later probe of every current course got HTTP 200 from each gradebook endpoint.
+- Submission status comes from `GET /learn/api/public/v1/courses/{id}/gradebook/users/me`. It returns one record per column the user has a record for. Status `NeedsGrading` means submitted and waiting, and `Graded` means graded. A column with no record has nothing submitted. A course with no records answers 200 with no results, so 404 means unreadable. A calendar item id is a gradebook column id, so `Due` joins items to records with one request per course and no column lookup.
+- One pure function, `gradeStatus`, derives `GradeStatus` (`graded`, `submitted`, `unsubmitted`, `none`, `exempt`, `unknown`) from a record or its absence plus whether the item can be submitted online. Exempt wins, then `NeedsGrading`, then `Graded` or any score or display grade. With no usable record, the status is `unsubmitted` when the item can be submitted online and `none` otherwise. A record that says `Graded` with no score is `graded` with an empty score.
+- A gradebook that answers 403 or 404 fails only its own course. The items of that course show `unknown`, the result comes back with a `bb.CourseErrors`, and the CLI prints the rows, names the courses on stderr, and exits 6. A login failure, the request cap, and a 5xx abort the whole command, because every later course would fail the same way. `due list --pending` keeps `unsubmitted` and `unknown` items, so a filter never hides an item whose status it could not read.
+- `bb grade list` reads `GET /learn/api/public/v2/courses/{id}/gradebook/columns` (paged) and `gradebook/users/me` for each course, 2 requests per course. It returns one `Grade` per column whose availability is "Yes" (Ultra hides the others from students), with the same `gradeStatus` and "can be submitted online" meaning the `Attempts` grading type. Feedback HTML becomes plain text in `bb`. With no arguments it covers current courses where the user is a student. When some courses fail with 403 or 404, it prints the rest and exits 6. When every course fails, it returns the first failure as is, so a single forbidden course exits 3, not 6.
+- The per-column attempts endpoint (`.../gradebook/columns/{id}/attempts`) would give submission dates, at one request per column and with 404 meaning "no attempt". `bb` does not call it.
 
 ## Open questions and risks
 

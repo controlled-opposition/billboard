@@ -167,6 +167,7 @@ func newRoot(e *env) *cobra.Command {
 		newCourseCmd(e),
 		newAPICmd(e),
 		newDueCmd(e),
+		newGradeCmd(e),
 		newContentCmd(e),
 	)
 	rejectUnknownSubcommands(root)
