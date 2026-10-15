@@ -82,11 +82,10 @@ type Options struct {
 // a 401 launch Chrome once: the second finds the fresh session the first
 // saved and returns it.
 type Manager struct {
-	paths   Paths
-	keyring Keyring
-	browser Browser
-	noRenew bool
-	// renewTimeout is RenewTimeout; tests shorten it.
+	paths        Paths
+	keyring      Keyring
+	browser      Browser
+	noRenew      bool
 	renewTimeout time.Duration
 }
 

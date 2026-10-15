@@ -58,8 +58,6 @@ Examples:
 	return cmd
 }
 
-// apiPath makes arg server-relative. A URL is refused rather than
-// prefixed, or "https://x/y" would become the on-host path "/https://x/y".
 func apiPath(arg string) (string, error) {
 	u, err := url.Parse(arg)
 	if err != nil || u.Scheme != "" || u.Host != "" || strings.HasPrefix(arg, "//") {

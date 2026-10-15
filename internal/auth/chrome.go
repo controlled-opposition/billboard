@@ -46,7 +46,6 @@ func captureCookies(ctx context.Context, r BrowserRun) ([]*http.Cookie, error) {
 	defer cancelAlloc()
 	bctx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
-	// ctx carries the run's deadline; when it fires, chromedp kills Chrome.
 	if err := chromedp.Do(bctx); err != nil {
 		return nil, fmt.Errorf("start chrome: %w", err)
 	}

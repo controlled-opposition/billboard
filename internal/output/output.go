@@ -57,7 +57,7 @@ type Options struct {
 	JSON     []string
 	JQ       string
 	Template string
-	jq       *JQ // JQ compiled by the PreRunE Bind installs
+	jq       *JQ
 }
 
 // Bind registers --json/--jq/--template on cmd and appends a JSON FIELDS
@@ -178,7 +178,14 @@ func printJSON[T any](st Streams, s Schema[T], o *Options, rows []T) error {
 		return err
 	}
 	switch {
-	case o.jq != nil:
+	case o.JQ != "":
+		if o.jq == nil {
+			q, err := ParseJQ(o.JQ)
+			if err != nil {
+				return err
+			}
+			o.jq = q
+		}
 		return o.jq.Run(&buf, st.Out)
 	case o.Template != "":
 		t := template.New(st.Out, st.Width, false)

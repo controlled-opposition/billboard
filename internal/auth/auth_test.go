@@ -6,20 +6,38 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
 
-type memKeyring struct{ b []byte }
+type memKeyring struct {
+	mu sync.Mutex
+	b  []byte
+}
 
 func (k *memKeyring) Get() ([]byte, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	if k.b == nil {
 		return nil, ErrNoItem
 	}
 	return k.b, nil
 }
-func (k *memKeyring) Set(b []byte) error { k.b = b; return nil }
-func (k *memKeyring) Delete() error      { k.b = nil; return nil }
+
+func (k *memKeyring) Set(b []byte) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.b = b
+	return nil
+}
+
+func (k *memKeyring) Delete() error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.b = nil
+	return nil
+}
 
 func router(v string) []*http.Cookie {
 	return []*http.Cookie{{Name: "AWSALB", Value: "lb"}, {Name: "BbRouter", Value: v}}

@@ -173,7 +173,7 @@ func newRoot(e *env) *cobra.Command {
 		Short: "Help about any command",
 		RunE: func(_ *cobra.Command, args []string) error {
 			target, rest, err := root.Find(args)
-			if err != nil || len(rest) > 0 {
+			if err != nil || (len(rest) > 0 && target.HasSubCommands()) {
 				return usageError{fmt.Sprintf("unknown help topic %q", strings.Join(args, " "))}
 			}
 			target.InitDefaultHelpFlag()

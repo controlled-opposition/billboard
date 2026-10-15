@@ -33,8 +33,12 @@ func ParseJQ(expr string) (*JQ, error) {
 // an empty line). Arrays and objects print as one-line JSON with & < >
 // left as they are and numbers at full precision.
 func (q *JQ) Run(r io.Reader, w io.Writer) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
 	var in any
-	if err := json.NewDecoder(r).Decode(&in); err != nil {
+	if err := json.Unmarshal(b, &in); err != nil {
 		return err
 	}
 	enc := json.NewEncoder(w)

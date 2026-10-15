@@ -340,6 +340,9 @@ func TestHelpTopicMatchesCommandHelp(t *testing.T) {
 			t.Errorf("help %v printed no usage:\n%s", topic, out)
 		}
 	}
+	code, out, errOut := h.run(nil, "help", "api", "/x")
+	_, want, _ := h.run(nil, "api", "--help")
+	expect(t, code, out, errOut, 0, want, "")
 }
 
 func TestMaxRequestsStopsTheWalk(t *testing.T) {
