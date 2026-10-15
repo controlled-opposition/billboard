@@ -24,7 +24,7 @@ type Planned struct {
 //   - every path segment is sanitized, so instructor-authored titles cannot
 //     escape the download dir;
 //   - the same file reached from two nodes is planned once;
-//   - two different files with the same RelPath get " (<RID>)" before the
+//   - two different files whose RelPaths match ignoring case get " (<RID>)" before the
 //     extension, so names never depend on walk order.
 func Plan(course Course, nodes []ContentNode) []Planned {
 	seen := map[string]bool{}
@@ -43,12 +43,13 @@ func Plan(course Course, nodes []ContentNode) []Planned {
 			out = append(out, Planned{Attachment: a, Course: course, RelPath: filepath.Join(segs...)})
 		}
 	}
+	// Keyed case-folded: macOS and Windows file systems ignore case by default.
 	count := map[string]int{}
 	for _, p := range out {
-		count[p.RelPath]++
+		count[strings.ToLower(p.RelPath)]++
 	}
 	for i, p := range out {
-		if count[p.RelPath] > 1 {
+		if count[strings.ToLower(p.RelPath)] > 1 {
 			ext := filepath.Ext(p.RelPath)
 			out[i].RelPath = strings.TrimSuffix(p.RelPath, ext) + " (" + p.Attachment.RID + ")" + ext
 		}
