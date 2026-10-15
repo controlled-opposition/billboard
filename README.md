@@ -5,7 +5,7 @@
 
 billboard is named after the famous Super Mario character [Bill Board.](https://www.mariowiki.com/Bill_Board)
 
-`bb` is a command-line client for [Blackboard Learn Ultra at William & Mary](https://blackboard.wm.edu), modeled on GitHub's `gh`. It is built mainly for AI agents that work from a shell, but humans can use it too. It reads your courses, due dates, and course materials, more functionality will be added later.
+`bb` is a command-line client for [Blackboard Learn Ultra at William & Mary](https://blackboard.wm.edu), modeled on GitHub's `gh`. It is built mainly for AI agents that work from a shell, but humans can use it too. It reads your courses, due dates, grades, submission status, and course materials. More functionality will be added later.
 
 ## Workflow
 
@@ -33,6 +33,8 @@ nix profile install github:controlled-opposition/billboard
    bb course list                              # current courses
    bb due list --until 7d                      # what is due this week, with submission status
    bb due list --pending                       # what is due and not submitted yet
+   bb grade list                               # grades in your current courses
+   bb grade list math101 --json title,score,possible,feedback
    bb content list math101 --files-only        # course materials with files
    bb content download math101 _20001_1 --dir ~/bb
    bb due list --json title,due,course         # JSON for scripts and agents
