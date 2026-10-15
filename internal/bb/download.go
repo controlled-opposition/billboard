@@ -67,9 +67,17 @@ func segment(s string) string {
 	}, s)
 	s = strings.TrimLeft(strings.TrimSpace(s), ".")
 	const maxBytes = 200 // under the usual 255-byte name limit, leaving room for " (rid)" and ".part"
-	for len(s) > maxBytes {
-		_, size := utf8.DecodeLastRuneInString(s)
-		s = s[:len(s)-size]
+	if len(s) > maxBytes {
+		ext := filepath.Ext(s)
+		if len(ext) > 16 { // a dot inside a long title, not a file extension
+			ext = ""
+		}
+		stem := strings.TrimSuffix(s, ext)
+		for len(stem)+len(ext) > maxBytes {
+			_, size := utf8.DecodeLastRuneInString(stem)
+			stem = stem[:len(stem)-size]
+		}
+		s = stem + ext
 	}
 	if s == "" {
 		return "_"
