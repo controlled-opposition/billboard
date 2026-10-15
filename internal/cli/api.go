@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/cli/go-gh/v2/pkg/jq"
@@ -24,9 +26,9 @@ Examples:
   bb api /learn/api/public/v1/terms --jq '.results[].name'`,
 		Args: positional(cobra.ExactArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path := args[0]
-			if !strings.HasPrefix(path, "/") {
-				path = "/" + path
+			path, err := apiPath(args[0])
+			if err != nil {
+				return err
 			}
 			body, err := e.client().Raw(cmd.Context(), http.MethodGet, path)
 			if err != nil {
@@ -42,4 +44,17 @@ Examples:
 	}
 	cmd.Flags().StringVarP(&expr, "jq", "q", "", "filter the response with a jq `expression`")
 	return cmd
+}
+
+// apiPath makes arg server-relative. A URL is refused rather than
+// prefixed, or "https://x/y" would become the on-host path "/https://x/y".
+func apiPath(arg string) (string, error) {
+	u, err := url.Parse(arg)
+	if err != nil || u.Scheme != "" || u.Host != "" || strings.HasPrefix(arg, "//") {
+		return "", usageError{fmt.Sprintf("api takes a path on the Blackboard host, not a URL: %q", arg)}
+	}
+	if !strings.HasPrefix(arg, "/") {
+		arg = "/" + arg
+	}
+	return arg, nil
 }
