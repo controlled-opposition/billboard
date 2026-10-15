@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -148,5 +149,24 @@ func TestRenewDeadlineCoversBrowserSoWaiterRenews(t *testing.T) {
 	got.Apply(r)
 	if x := r.Header.Get("X-Blackboard-XSRF"); x != "from-b" {
 		t.Fatalf("xsrf = %q, want from-b", x)
+	}
+}
+
+func TestRenewInterruptedIsNotNeedsHuman(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(PathsIn(dir).Profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(Options{Paths: PathsIn(dir), Keyring: &memKeyring{}, Browser: func(ctx context.Context, r BrowserRun) ([]*http.Cookie, error) {
+		<-ctx.Done()
+		return nil, errors.New("open login page: chrome exited")
+	}})
+	stale, _ := parseSession(router("xsrf:old"), time.Time{})
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+
+	_, err := m.Renew(ctx, stale)
+	if errors.Is(err, ErrNeedsHuman) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled and not ErrNeedsHuman", err)
 	}
 }
