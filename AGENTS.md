@@ -78,4 +78,4 @@ Commit subjects follow [Conventional Commits](https://www.conventionalcommits.or
 git config core.hooksPath .githooks
 ```
 
-The `commits` workflow runs the same script on every commit in a pull request and on the pull request title. Squash `fixup!` commits before you merge. Pull request titles use the same format, because the title becomes the squash commit subject.
+Squash `fixup!` commits before you merge. Pull request titles use the same format, because the title becomes the squash commit subject.
