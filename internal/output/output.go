@@ -57,12 +57,14 @@ type Options struct {
 	JSON     []string
 	JQ       string
 	Template string
+	jq       *JQ // JQ compiled by the PreRunE Bind installs
 }
 
 // Bind registers --json/--jq/--template on cmd and appends a JSON FIELDS
 // section with the schema's field docs to cmd.Long. Flag validation runs in
-// a PreRunE it installs, so a typo fails before any network request; its
-// errors go through cmd.FlagErrorFunc so the CLI classifies them as usage.
+// a PreRunE it installs, so a typo or a malformed --jq or --template fails
+// before any network request; its errors go through cmd.FlagErrorFunc so
+// the CLI classifies them as usage.
 func Bind[T any](cmd *cobra.Command, s Schema[T]) *Options {
 	o := &Options{}
 	names := make([]string, len(s.Fields))
@@ -89,11 +91,26 @@ func Bind[T any](cmd *cobra.Command, s Schema[T]) *Options {
 				return fail("unknown JSON field %q; available: %s", n, strings.Join(names, ", "))
 			}
 		}
+		if c.Flags().Changed("json") && len(o.JSON) == 0 {
+			return fail("--json needs at least one field; available: %s", strings.Join(names, ", "))
+		}
 		if (o.JQ != "" || o.Template != "") && len(o.JSON) == 0 {
 			return fail("--jq and --template require --json")
 		}
 		if o.JQ != "" && o.Template != "" {
 			return fail("use only one of --jq and --template")
+		}
+		if o.JQ != "" {
+			q, err := ParseJQ(o.JQ)
+			if err != nil {
+				return fail("%v", err)
+			}
+			o.jq = q
+		}
+		if o.Template != "" {
+			if err := template.New(io.Discard, 0, false).Parse(o.Template); err != nil {
+				return fail("invalid template %q: %v", o.Template, err)
+			}
 		}
 		return nil
 	}
@@ -161,12 +178,8 @@ func printJSON[T any](st Streams, s Schema[T], o *Options, rows []T) error {
 		return err
 	}
 	switch {
-	case o.JQ != "":
-		q, err := ParseJQ(o.JQ)
-		if err != nil {
-			return err
-		}
-		return q.Run(&buf, st.Out)
+	case o.jq != nil:
+		return o.jq.Run(&buf, st.Out)
 	case o.Template != "":
 		t := template.New(st.Out, st.Width, false)
 		if err := t.Parse(o.Template); err != nil {

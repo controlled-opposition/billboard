@@ -14,6 +14,7 @@ import (
 
 func newAPICmd(e *env) *cobra.Command {
 	var expr string
+	var q *output.JQ
 	cmd := &cobra.Command{
 		Use:   "api <path>",
 		Short: "GET a Blackboard REST path with the stored session",
@@ -26,6 +27,16 @@ Examples:
   bb api /learn/api/public/v1/users/me
   bb api /learn/api/public/v1/terms --jq '.results[].name'`,
 		Args: positional(cobra.ExactArgs(1)),
+		PreRunE: func(*cobra.Command, []string) error {
+			if expr == "" {
+				return nil
+			}
+			var err error
+			if q, err = output.ParseJQ(expr); err != nil {
+				return usageError{err.Error()}
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path, err := apiPath(args[0])
 			if err != nil {
@@ -36,11 +47,7 @@ Examples:
 				return err
 			}
 			defer body.Close()
-			if expr != "" {
-				q, err := output.ParseJQ(expr)
-				if err != nil {
-					return err
-				}
+			if q != nil {
 				return q.Run(body, e.streams.Out)
 			}
 			_, err = io.Copy(e.streams.Out, body)

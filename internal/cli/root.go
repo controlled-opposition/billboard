@@ -162,6 +162,24 @@ func newRoot(e *env) *cobra.Command {
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return usageError{err.Error()} })
 	root.SetHelpTemplate(root.HelpTemplate() + "\n" + exitCodesHelp())
 	root.PersistentFlags().IntVar(&e.maxRequests, "max-requests", bb.DefaultMaxRequests, "stop after this many requests to Blackboard")
+	root.PersistentPreRunE = func(*cobra.Command, []string) error {
+		if e.maxRequests < 1 {
+			return usageError{"--max-requests must be at least 1"}
+		}
+		return nil
+	}
+	root.SetHelpCommand(&cobra.Command{
+		Use:   "help [command]",
+		Short: "Help about any command",
+		RunE: func(_ *cobra.Command, args []string) error {
+			target, rest, err := root.Find(args)
+			if err != nil || len(rest) > 0 {
+				return usageError{fmt.Sprintf("unknown help topic %q", strings.Join(args, " "))}
+			}
+			target.InitDefaultHelpFlag()
+			return target.Help()
+		},
+	})
 	root.AddCommand(
 		newAuthCmd(e),
 		newCourseCmd(e),
