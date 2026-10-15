@@ -122,7 +122,8 @@ func (m *Manager) Current(ctx context.Context) (Session, error) {
 // got the 401; if the keychain already holds a different session, Renew
 // returns that without launching Chrome (another process renewed first).
 // Otherwise it runs headless Chrome against the profile for at most
-// RenewTimeout and saves the cookies. Every failure wraps ErrNeedsHuman.
+// RenewTimeout and saves the cookies. Every failure wraps ErrNeedsHuman,
+// except that a cancelled ctx (Ctrl-C, SIGTERM) returns the ctx error.
 func (m *Manager) Renew(ctx context.Context, stale Session) (Session, error) {
 	if m.noRenew {
 		return Session{}, fmt.Errorf("session expired and BB_NO_RENEW is set: %w", ErrNeedsHuman)
@@ -144,6 +145,9 @@ func (m *Manager) Renew(ctx context.Context, stale Session) (Session, error) {
 		return nil
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			return Session{}, fmt.Errorf("session renewal interrupted: %w", ctx.Err())
+		}
 		if errors.Is(err, ErrNeedsHuman) {
 			return Session{}, err
 		}
