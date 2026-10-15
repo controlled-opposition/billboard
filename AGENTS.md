@@ -4,13 +4,15 @@
 
 ## Build and test
 
-Go is not on `PATH` on the main development machine. Run Go through Nix:
+Go is not on `PATH` on the main development machine. Run Go through the flake's dev shell, which also enables the repository hooks:
 
 ```sh
-nix shell nixpkgs#go -c go vet ./...
-nix shell nixpkgs#go -c go test ./...
-nix shell nixpkgs#go -c go build -o bb ./cmd/bb
+nix develop -c go vet ./...
+nix develop -c go test ./...
+nix develop -c go build -o bb ./cmd/bb
 ```
+
+With direnv, run `direnv allow` once and the shell loads on `cd`, so the `nix develop -c` prefix is not needed. `nix build` builds `bb` into `./result/bin/bb` and runs the tests. When `go.mod` or `go.sum` changes, `vendorHash` in `flake.nix` goes stale. Set it to `pkgs.lib.fakeHash`, run `nix build`, and paste the hash from the error.
 
 The tests run the real commands through `cli.Execute` against an `httptest` server. They never touch the network.
 

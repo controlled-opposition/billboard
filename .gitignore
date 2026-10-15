@@ -1,3 +1,5 @@
 /bb
 /dist/
 *.part
+/result
+/.direnv/
