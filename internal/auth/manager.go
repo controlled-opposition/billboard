@@ -85,10 +85,12 @@ type Manager struct {
 	keyring Keyring
 	browser Browser
 	noRenew bool
+	// renewTimeout is RenewTimeout; tests shorten it.
+	renewTimeout time.Duration
 }
 
 func NewManager(o Options) *Manager {
-	m := &Manager{paths: o.Paths, keyring: o.Keyring, browser: o.Browser, noRenew: o.NoRenew}
+	m := &Manager{paths: o.Paths, keyring: o.Keyring, browser: o.Browser, noRenew: o.NoRenew, renewTimeout: RenewTimeout}
 	if m.keyring == nil {
 		m.keyring = systemKeyring{}
 	}
@@ -125,7 +127,7 @@ func (m *Manager) Renew(ctx context.Context, stale Session) (Session, error) {
 		return Session{}, fmt.Errorf("session expired and BB_NO_RENEW is set: %w", ErrNeedsHuman)
 	}
 	var fresh Session
-	err := withLock(ctx, m.paths.Lock, RenewTimeout+5*time.Second, func() error {
+	err := withLock(ctx, m.paths.Lock, m.renewTimeout+5*time.Second, func() error {
 		if cur, err := m.Current(ctx); err == nil && !cur.same(stale) {
 			fresh = cur
 			return nil
@@ -133,7 +135,7 @@ func (m *Manager) Renew(ctx context.Context, stale Session) (Session, error) {
 		if !m.HasProfile() {
 			return errors.New("session expired and there is no browser profile to renew from")
 		}
-		s, err := m.capture(ctx, BrowserRun{Profile: m.paths.Profile, Headless: true, Timeout: RenewTimeout})
+		s, err := m.capture(ctx, BrowserRun{Profile: m.paths.Profile, Headless: true, Timeout: m.renewTimeout})
 		if err != nil {
 			return fmt.Errorf("headless renewal failed: %w", err)
 		}
