@@ -46,8 +46,7 @@ func captureCookies(ctx context.Context, r BrowserRun) ([]*http.Cookie, error) {
 	defer cancelAlloc()
 	bctx, cancel := chromedp.NewContext(allocCtx)
 	defer cancel()
-	// The first Run starts the browser; a deadline on it would kill Chrome,
-	// so the timeout below is a wall clock, not a context deadline.
+	// ctx carries the run's deadline; when it fires, chromedp kills Chrome.
 	if err := chromedp.Do(bctx); err != nil {
 		return nil, fmt.Errorf("start chrome: %w", err)
 	}
@@ -65,7 +64,6 @@ func captureCookies(ctx context.Context, r BrowserRun) ([]*http.Cookie, error) {
 		return nil, fmt.Errorf("open login page: %w", err)
 	}
 
-	deadline := time.Now().Add(r.Timeout)
 	var last string
 	for {
 		if loc, err := chromedp.Run(bctx, chromedp.Location()); err == nil {
@@ -79,11 +77,11 @@ func captureCookies(ctx context.Context, r BrowserRun) ([]*http.Cookie, error) {
 				return nil, fmt.Errorf("sign-in page at %s asks for credentials or MFA: %w", hostOf(last), ErrNeedsHuman)
 			}
 		}
-		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("did not reach Blackboard within %s (last page: %s)", r.Timeout, hostOf(last))
-		}
 		select {
 		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return nil, fmt.Errorf("did not reach Blackboard within %s (last page: %s)", r.Timeout, hostOf(last))
+			}
 			return nil, ctx.Err()
 		case <-time.After(250 * time.Millisecond):
 		}

@@ -63,6 +63,7 @@ type BrowserRun struct {
 // Browser drives Chrome until it lands on blackboard.wm.edu/ultra and
 // returns the blackboard.wm.edu cookies. Headless runs return an error
 // wrapping ErrNeedsHuman as soon as a page asks for credentials or MFA.
+// ctx carries the r.Timeout deadline; a Browser returns once ctx is done.
 type Browser func(ctx context.Context, r BrowserRun) ([]*http.Cookie, error)
 
 // Options configure a Manager. Nil Keyring and Browser select the macOS
@@ -183,8 +184,12 @@ func (m *Manager) Login(ctx context.Context, o LoginOptions) (Session, error) {
 }
 
 // capture runs the browser, parses the cookies, and saves the session.
-// Callers hold the lock.
+// Callers hold the lock. r.Timeout is a deadline on the whole browser run,
+// Chrome startup included, so Renew's lock hold stays under the time a
+// waiting process gives it.
 func (m *Manager) capture(ctx context.Context, r BrowserRun) (Session, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
+	defer cancel()
 	cookies, err := m.browser(ctx, r)
 	if err != nil {
 		return Session{}, err
