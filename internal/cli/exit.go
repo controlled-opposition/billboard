@@ -35,7 +35,7 @@ var exitCodes = []struct {
 	{ExitForbidden, "Blackboard denied access to this resource (HTTP 403); logging in again will not help"},
 	{ExitNeedsHuman, "login required: ask the human to run `bb auth login`, then retry"},
 	{ExitNotFound, "no match, or several matches (candidates on stderr), for a course/content argument; or HTTP 404"},
-	{ExitPartial, "partial failure; see per-item status on stdout"},
+	{ExitPartial, "partial failure; see per-item status on stdout, and the failed courses or items on stderr"},
 	{ExitUnavailable, "Blackboard unavailable (5xx, 429, network); retry later"},
 }
 
@@ -69,7 +69,7 @@ func classify(err error) ExitCode {
 		return ExitNeedsHuman
 	case errors.As(err, &ue):
 		return ExitUsage
-	case errors.Is(err, errPartial):
+	case errors.Is(err, errPartial), bb.IsPartial(err):
 		return ExitPartial
 	case errors.As(err, &ae):
 		switch ae.Kind {

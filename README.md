@@ -31,7 +31,8 @@ nix profile install github:controlled-opposition/billboard
 
    ```sh
    bb course list                              # current courses
-   bb due list --until 7d                      # what is due this week
+   bb due list --until 7d                      # what is due this week, with submission status
+   bb due list --pending                       # what is due and not submitted yet
    bb content list math101 --files-only        # course materials with files
    bb content download math101 _20001_1 --dir ~/bb
    bb due list --json title,due,course         # JSON for scripts and agents

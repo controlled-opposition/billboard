@@ -29,7 +29,8 @@ import (
 )
 
 // Field is one exported attribute of T. Name is the JSON key (camelCase)
-// and the --json token. Value returns a JSON-encodable value.
+// and the --json token. Value returns a JSON-encodable value, or an untyped
+// nil for "no value": null in JSON, an empty cell in TSV and tables.
 type Field[T any] struct {
 	Name  string
 	Doc   string // one line, shown under JSON FIELDS in --help
@@ -182,6 +183,8 @@ func printJSON[T any](st Streams, s Schema[T], o *Options, rows []T) error {
 func text(v any, tty bool) string {
 	var s string
 	switch v := v.(type) {
+	case nil:
+		s = ""
 	case time.Time:
 		switch {
 		case v.IsZero():

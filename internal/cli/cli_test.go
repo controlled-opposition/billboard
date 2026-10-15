@@ -80,6 +80,7 @@ type harness struct {
 	cookies  []string          // Cookie headers the server saw
 	tty      bool              // stdout is a terminal of unknown width
 	routes   map[string]string // extra responses by request URI
+	fail     map[string]int    // error statuses by request URI
 }
 
 func newHarness(t *testing.T, valid string, xsrfs ...string) *harness {
@@ -99,6 +100,15 @@ func (h *harness) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if status, ok := h.fail[r.URL.RequestURI()]; ok {
+		w.WriteHeader(status)
+		if status == http.StatusForbidden {
+			fmt.Fprint(w, forbiddenJSON)
+		} else {
+			fmt.Fprintf(w, `{"status":%d,"message":%q}`, status, http.StatusText(status))
+		}
+		return
+	}
 	switch r.URL.RequestURI() {
 	case "/learn/api/public/v1/users/me":
 		fmt.Fprint(w, meJSON)
@@ -108,9 +118,6 @@ func (h *harness) serve(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, membershipsPage2)
 	case "/learn/api/public/v1/terms":
 		fmt.Fprint(w, termsJSON)
-	case "/learn/api/public/v2/courses/_501_1/gradebook/columns":
-		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprint(w, forbiddenJSON)
 	default:
 		if body, ok := h.routes[r.URL.RequestURI()]; ok {
 			fmt.Fprint(w, body)
@@ -278,6 +285,7 @@ func TestRenewalThatNeedsMFAExitsFour(t *testing.T) {
 
 func TestForbiddenHasItsOwnExitCode(t *testing.T) {
 	h := newHarness(t, "x1", "x1")
+	h.fail = map[string]int{"/learn/api/public/v2/courses/_501_1/gradebook/columns": http.StatusForbidden}
 	h.login()
 	code, out, errOut := h.run(nil, "api", "/learn/api/public/v2/courses/_501_1/gradebook/columns")
 	expect(t, code, out, errOut, 3, "", "bb: HTTP 403: You do not have permission to access grade column\n")

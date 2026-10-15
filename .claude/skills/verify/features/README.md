@@ -38,7 +38,7 @@ Each feature file starts with an H1 title and one paragraph about the behavior t
 
 - [Session](./auth.md) covers `bb auth status`, the exit-4 contract, and headless renewal.
 - [Courses](./courses.md) covers listing, `--all`, resolving a COURSE argument, and the output formats.
-- [Due dates](./due.md) covers the default window, `--since` and `--until`, long windows, and `--course`.
+- [Due dates](./due.md) covers the default window, `--since` and `--until`, long windows, `--course`, submission status, and `--pending`.
 - [Content outline](./content-list.md) covers whole-course and subtree listing and `--files-only`.
 - [Content download](./content-download.md) covers dry runs, downloads, re-runs, and the file layout.
 - [Raw API](./api.md) covers `bb api` and its path handling.

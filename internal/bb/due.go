@@ -43,10 +43,7 @@ var dueKindByEventType = map[string]DueKind{
 	"Manual Grade Column": DueManual,
 }
 
-// DueItem is one dated gradable thing. Submission state is deliberately
-// absent: no probed endpoint reports it, and a field that is always
-// "unknown" teaches agents to ignore it. Add Submitted when attempts are
-// wired, as a new JSON field (additive, non-breaking).
+// DueItem is one dated gradable thing.
 type DueItem struct {
 	Course      Course // joined from Courses by calendarId; Code/Name usable directly
 	Title       string
@@ -55,6 +52,7 @@ type DueItem struct {
 	RawType     string // Blackboard eventType verbatim, for DueOther and debugging
 	Attemptable bool   // calendar says it can be attempted online
 	ColumnID    ColumnID
+	Status      GradeStatus // GradeUnknown when the course's gradebook could not be read
 }
 
 // DueFilter narrows Due. Zero value: every course, the window only.
@@ -68,10 +66,14 @@ type DueFilter struct {
 // more than 16 weeks" beyond it.
 const calendarSpan = 16 * 7 * 24 * time.Hour
 
-// Due reads GET /learn/api/public/v1/calendars/items?since&until (the one
-// source that answered 200 for every course; gradebook columns 403 in some),
-// joins each gradebook item to a Course, and returns items sorted by Due
-// then Course.Code. Items from dropped courses are left out.
+// Due reads GET /learn/api/public/v1/calendars/items?since&until, joins
+// each gradebook item to a Course, and returns items sorted by Due then
+// Course.Code. Items from dropped courses are left out.
+//
+// Each item's Status comes from its course's gradebook/users/me, one
+// request per course with an item; a calendar item id is a column id. A
+// course whose gradebook answers 403 or 404 keeps its items as GradeUnknown
+// and is reported in a CourseErrors returned with them.
 //
 // courses comes from Courses so a command pays for the list once.
 func (c *Client) Due(ctx context.Context, courses []Course, f DueFilter) ([]DueItem, error) {
@@ -91,6 +93,30 @@ func (c *Client) Due(ctx context.Context, courses []Course, f DueFilter) ([]DueI
 	items := parseDue(wire, courses)
 	if len(f.Courses) > 0 {
 		items = slices.DeleteFunc(items, func(d DueItem) bool { return !slices.Contains(f.Courses, d.Course.ID) })
+	}
+	var failed CourseErrors
+	recsByCourse := map[CourseID]map[ColumnID]wireGrade{} // nil value: unreadable
+	for i, it := range items {
+		recs, seen := recsByCourse[it.Course.ID]
+		if !seen {
+			var err error
+			if recs, err = c.myGrades(ctx, it.Course.ID); err != nil {
+				ce, ok := courseError(it.Course, err)
+				if !ok {
+					return nil, err
+				}
+				failed = append(failed, ce)
+			}
+			recsByCourse[it.Course.ID] = recs
+		}
+		if recs == nil {
+			items[i].Status = GradeUnknown
+			continue
+		}
+		items[i].Status = gradeStatus(lookup(recs, it.ColumnID), it.Attemptable)
+	}
+	if failed != nil {
+		return items, failed
 	}
 	return items, nil
 }
