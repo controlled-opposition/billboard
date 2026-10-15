@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# bbv: drive the real bb against blackboard.wm.edu and keep the evidence.
+#
+#   bbv start            build bb from the working tree into a new run directory
+#   bbv doctor           check the build and the stored session without renewing it
+#   bbv run LABEL ARGS…  run `bb ARGS…`, record the command, stdout, stderr, and exit code
+#   bbv scratch          print the run's scratch directory (for --dir)
+#   bbv cleanup          delete the run's binary and scratch files; keep the evidence
+#   bbv where            print the run directory
+#
+# Runs live in ${BBV_ROOT:-~/.cache/bb-verify}/<run id>. The newest run is the
+# current one; set BBV_RUN=<run id> to pick another. Evidence holds real course
+# data, so it lives outside the repository and must never be committed.
+set -euo pipefail
+
+root=${BBV_ROOT:-$HOME/.cache/bb-verify}
+repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+budget=80
+
+die() { echo "bbv: $*" >&2; exit 1; }
+
+run_dir() {
+	local id=${BBV_RUN:-}
+	[ -n "$id" ] || id=$(cat "$root/current" 2>/dev/null) || die "no run yet; run: bbv start"
+	[ -d "$root/$id" ] || die "run $id not found under $root"
+	echo "$root/$id"
+}
+
+tree_id() {
+	# HEAD plus a hash of uncommitted Go changes, so doctor can tell a stale build.
+	local go=(-- '*.go' go.mod go.sum)
+	{
+		git -C "$repo" rev-parse HEAD
+		git -C "$repo" diff HEAD "${go[@]}"
+		git -C "$repo" ls-files --others --exclude-standard "${go[@]}" | while read -r f; do cat "$repo/$f"; done
+	} | shasum | cut -c1-12
+}
+
+start() {
+	local id
+	id=$(date +%Y%m%d-%H%M%S)-$$
+	local dir=$root/$id
+	mkdir -p "$dir/bin" "$dir/scratch" "$dir/evidence"
+	(cd "$repo" && nix develop -c go build -o "$dir/bin/bb" ./cmd/bb) 2>&1 | grep -v "Git tree .* is dirty" || true
+	[ -x "$dir/bin/bb" ] || die "build failed"
+	tree_id >"$dir/tree"
+	echo "$id" >"$root/current"
+	echo "run $id"
+	echo "dir $dir"
+}
+
+doctor() {
+	local dir status=0
+	dir=$(run_dir)
+	[ -x "$dir/bin/bb" ] || die "no binary in $dir (cleaned up?); run: bbv start"
+	if [ "$(cat "$dir/tree")" = "$(tree_id)" ]; then
+		echo "build   ok (matches working tree)"
+	else
+		echo "build   STALE: the working tree changed since bbv start; run bbv start again"
+		status=1
+	fi
+	local out code=0
+	out=$(BB_NO_RENEW=1 "$dir/bin/bb" auth status --max-requests 3 --json loggedIn,expiresAt,canRenew) || code=$?
+	echo "session $out"
+	case $code in
+	0) echo "session ok" ;;
+	4) echo "session EXPIRED: ask the human to run 'bb auth login', then retry"; status=4 ;;
+	*) echo "session ERROR: bb auth status exited $code"; status=$code ;;
+	esac
+	return $status
+}
+
+run() {
+	[ $# -ge 2 ] || die "usage: bbv run LABEL ARGS…"
+	local label=$1 dir; shift
+	dir=$(run_dir)
+	local args=("$@")
+	case " $* " in *" --max-requests"*) ;; *) args+=(--max-requests "$budget") ;; esac
+	local n
+	n=$(printf '%03d' $(($(find "$dir/evidence" -name '*.cmd' | wc -l) + 1)))
+	local base=$dir/evidence/$n-$label
+	{
+		printf 'bb'
+		for a in "${args[@]}"; do
+			if [[ $a =~ ^[A-Za-z0-9_./:=,@+-]+$ ]]; then printf ' %s' "$a"; else printf " '%s'" "${a//\'/\'\\\'\'}"; fi
+		done
+		echo
+	} >"$base.cmd"
+	local code=0
+	(cd "$dir/scratch" && "$dir/bin/bb" "${args[@]}") >"$base.out" 2>"$base.err" || code=$?
+	echo "$code" >"$base.exit"
+	echo "--- $n-$label: $(cat "$base.cmd")"
+	echo "--- exit $code, $(wc -l <"$base.out" | tr -d ' ') stdout lines, $(wc -c <"$base.out" | tr -d ' ') bytes"
+	cat "$base.out"
+	[ -z "$(tail -c1 "$base.out")" ] || echo
+	if [ -s "$base.err" ]; then echo "--- stderr"; cat "$base.err"; fi
+	[ "$code" != 4 ] || echo "--- exit 4: stop and ask the human to run 'bb auth login'"
+}
+
+cleanup() {
+	local dir
+	dir=$(run_dir)
+	rm -rf "$dir/bin" "$dir/scratch"
+	echo "removed binary and scratch; evidence kept in $dir/evidence"
+}
+
+case ${1:-} in
+start) start ;;
+doctor) doctor ;;
+run) shift; run "$@" ;;
+scratch) echo "$(run_dir)/scratch" ;;
+cleanup) cleanup ;;
+where) run_dir ;;
+*) sed -n '4,9p' "$0" >&2; exit 2 ;;
+esac
