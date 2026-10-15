@@ -24,7 +24,7 @@ type Planned struct {
 //   - every path segment is sanitized, so instructor-authored titles cannot
 //     escape the download dir;
 //   - the same file reached from two nodes is planned once;
-//   - two different files with the same RelPath get " (<RID>)" before the
+//   - two different files whose RelPaths match ignoring case get " (<RID>)" before the
 //     extension, so names never depend on walk order.
 func Plan(course Course, nodes []ContentNode) []Planned {
 	seen := map[string]bool{}
@@ -43,12 +43,13 @@ func Plan(course Course, nodes []ContentNode) []Planned {
 			out = append(out, Planned{Attachment: a, Course: course, RelPath: filepath.Join(segs...)})
 		}
 	}
+	// Keyed case-folded: macOS and Windows file systems ignore case by default.
 	count := map[string]int{}
 	for _, p := range out {
-		count[p.RelPath]++
+		count[strings.ToLower(p.RelPath)]++
 	}
 	for i, p := range out {
-		if count[p.RelPath] > 1 {
+		if count[strings.ToLower(p.RelPath)] > 1 {
 			ext := filepath.Ext(p.RelPath)
 			out[i].RelPath = strings.TrimSuffix(p.RelPath, ext) + " (" + p.Attachment.RID + ")" + ext
 		}
@@ -66,9 +67,17 @@ func segment(s string) string {
 	}, s)
 	s = strings.TrimLeft(strings.TrimSpace(s), ".")
 	const maxBytes = 200 // under the usual 255-byte name limit, leaving room for " (rid)" and ".part"
-	for len(s) > maxBytes {
-		_, size := utf8.DecodeLastRuneInString(s)
-		s = s[:len(s)-size]
+	if len(s) > maxBytes {
+		ext := filepath.Ext(s)
+		if len(ext) > 16 { // a dot inside a long title, not a file extension
+			ext = ""
+		}
+		stem := strings.TrimSuffix(s, ext)
+		for len(stem)+len(ext) > maxBytes {
+			_, size := utf8.DecodeLastRuneInString(stem)
+			stem = stem[:len(stem)-size]
+		}
+		s = stem + ext
 	}
 	if s == "" {
 		return "_"
@@ -93,7 +102,7 @@ type FetchResult struct {
 	Planned
 	Path   string // absolute path on disk
 	Status FetchStatus
-	Bytes  int64
+	Bytes  int64 // size on disk when downloaded or skipped
 	Err    error // non-nil iff Status == FetchFailed
 }
 
@@ -112,7 +121,7 @@ func (p Planned) Check(dir string) FetchResult {
 	// Seconds only: some filesystems store coarser mtimes than Blackboard's milliseconds.
 	if (a.Size == 0 || st.Size() == a.Size) &&
 		(a.Modified.IsZero() || st.ModTime().Truncate(time.Second).Equal(a.Modified.Truncate(time.Second))) {
-		r.Status = FetchSkipped
+		r.Status, r.Bytes = FetchSkipped, st.Size()
 	}
 	return r
 }

@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,6 +194,21 @@ func TestContentDownloadSubtreeThenRerunSkips(t *testing.T) {
 			t.Errorf("rerun requested %s, want no download requests", r)
 		}
 	}
+}
+
+func TestContentDownloadSizeIsBytesOnDisk(t *testing.T) {
+	h := newHarness(t, "x1", "x1")
+	h.routes = outlineRoutes()
+	h.routes[contents+"/_602_1"] = one(content("_602_1", "_600_1", "Syllabus", "resource/x-bb-folder", 1, nil))
+	h.login()
+	dir := t.TempDir()
+	want := `[{"name":"syllabus.pdf","size":13,"status":"%s"}]` + "\n"
+
+	code, out, errOut := h.run(nil, "content", "download", "soc101", "_602_1", "--dir", dir, "--json", "status,name,size")
+	expect(t, code, out, errOut, 0, fmt.Sprintf(want, "downloaded"), "")
+
+	code, out, errOut = h.run(nil, "content", "download", "soc101", "_602_1", "--dir", dir, "--json", "status,name,size")
+	expect(t, code, out, errOut, 0, fmt.Sprintf(want, "skipped"), "")
 }
 
 func TestContentDownloadSubtreePathMatchesFullWalk(t *testing.T) {

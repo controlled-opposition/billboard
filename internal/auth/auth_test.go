@@ -5,20 +5,39 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"sync"
 	"testing"
 	"time"
 )
 
-type memKeyring struct{ b []byte }
+type memKeyring struct {
+	mu sync.Mutex
+	b  []byte
+}
 
 func (k *memKeyring) Get() ([]byte, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	if k.b == nil {
 		return nil, ErrNoItem
 	}
 	return k.b, nil
 }
-func (k *memKeyring) Set(b []byte) error { k.b = b; return nil }
-func (k *memKeyring) Delete() error      { k.b = nil; return nil }
+
+func (k *memKeyring) Set(b []byte) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.b = b
+	return nil
+}
+
+func (k *memKeyring) Delete() error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.b = nil
+	return nil
+}
 
 func router(v string) []*http.Cookie {
 	return []*http.Cookie{{Name: "AWSALB", Value: "lb"}, {Name: "BbRouter", Value: v}}
@@ -101,5 +120,71 @@ func TestRenewWithoutProfileNeedsHuman(t *testing.T) {
 	_, err := m.Renew(context.Background(), stale)
 	if !errors.Is(err, ErrNeedsHuman) {
 		t.Fatalf("err = %v, want ErrNeedsHuman", err)
+	}
+}
+
+func TestRenewDeadlineCoversBrowserSoWaiterRenews(t *testing.T) {
+	dir := t.TempDir()
+	kr := &memKeyring{}
+	a := NewManager(Options{Paths: PathsIn(dir), Keyring: kr, Browser: func(context.Context, BrowserRun) ([]*http.Cookie, error) {
+		return router("xsrf:first"), nil
+	}})
+	stale, err := a.Login(context.Background(), LoginOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.browser = func(ctx context.Context, r BrowserRun) ([]*http.Cookie, error) {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(10 * time.Second):
+			return router("xsrf:late"), nil
+		}
+	}
+	b := NewManager(Options{Paths: PathsIn(dir), Keyring: kr, Browser: func(context.Context, BrowserRun) ([]*http.Cookie, error) {
+		return router("xsrf:from-b"), nil
+	}})
+	a.renewTimeout = 200 * time.Millisecond
+	b.renewTimeout = 200 * time.Millisecond
+
+	start := time.Now()
+	aDone := make(chan time.Duration, 1)
+	go func() {
+		a.Renew(context.Background(), stale)
+		aDone <- time.Since(start)
+	}()
+	time.Sleep(50 * time.Millisecond)
+	got, errB := b.Renew(context.Background(), stale)
+	held := <-aDone
+
+	if held > 2*time.Second {
+		t.Errorf("wedged renewal held the lock for %s, want about 200ms", held.Round(time.Millisecond))
+	}
+	if errB != nil {
+		t.Fatalf("waiting process: %v, want the session it renewed", errB)
+	}
+	r := httptest.NewRequest("GET", "/", nil)
+	got.Apply(r)
+	if x := r.Header.Get("X-Blackboard-XSRF"); x != "from-b" {
+		t.Fatalf("xsrf = %q, want from-b", x)
+	}
+}
+
+func TestRenewInterruptedIsNotNeedsHuman(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(PathsIn(dir).Profile, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(Options{Paths: PathsIn(dir), Keyring: &memKeyring{}, Browser: func(ctx context.Context, r BrowserRun) ([]*http.Cookie, error) {
+		<-ctx.Done()
+		return nil, errors.New("open login page: chrome exited")
+	}})
+	stale, _ := parseSession(router("xsrf:old"), time.Time{})
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+
+	_, err := m.Renew(ctx, stale)
+	if errors.Is(err, ErrNeedsHuman) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled and not ErrNeedsHuman", err)
 	}
 }

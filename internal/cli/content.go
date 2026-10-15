@@ -35,7 +35,12 @@ var fetchSchema = output.Schema[bb.FetchResult]{
 		{Name: "status", Doc: joinKinds(bb.FetchStatuses), Value: func(r bb.FetchResult) any { return r.Status }},
 		{Name: "path", Doc: "absolute local path", Value: func(r bb.FetchResult) any { return r.Path }},
 		{Name: "name", Doc: "file name", Value: func(r bb.FetchResult) any { return r.Attachment.Name }},
-		{Name: "size", Doc: "bytes", Value: func(r bb.FetchResult) any { return r.Attachment.Size }},
+		{Name: "size", Doc: "bytes on disk if downloaded or skipped, else the size Blackboard lists (0 if unknown)", Value: func(r bb.FetchResult) any {
+			if r.Status == bb.FetchDownloaded || r.Status == bb.FetchSkipped {
+				return r.Bytes
+			}
+			return r.Attachment.Size
+		}},
 		{Name: "mimeType", Doc: "MIME type", Value: func(r bb.FetchResult) any { return r.Attachment.MimeType }},
 		{Name: "contentId", Doc: "content item the file belongs to", Value: func(r bb.FetchResult) any { return r.Attachment.Source }},
 		{Name: "course", Doc: "object: id, code, name (TSV: code)", Value: func(r bb.FetchResult) any { return refOf(r.Course) }},

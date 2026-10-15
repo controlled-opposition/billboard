@@ -32,7 +32,7 @@ Preconditions:
 ## Gotchas
 
 - `--dry-run` writes nothing but still walks the outline over the network. It is not free.
-- The `size` field shows the size from the outline, which is 0 when the link has none. It stays 0 even after a download, so check the size on disk with `stat`, not with `size`. Observed on 2026-10-14.
+- For `downloaded` and `skipped` rows, the `size` field is the number of bytes on disk. For `planned` and `failed` rows, it is the size from the outline, which is 0 when the link has none. A dry run can show `size: 0` for a file that later downloads with a nonzero size.
 - `download-partial` needs a file that fails. The live site rarely provides one. `go test` covers it, so report the live journey as skipped unless a real failure occurs.
 - `bbv cleanup` deletes everything under `dl`. Record the file listing in the report before cleanup.
 - Downloaded files are course material. They must never enter the repository.

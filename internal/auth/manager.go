@@ -63,6 +63,7 @@ type BrowserRun struct {
 // Browser drives Chrome until it lands on blackboard.wm.edu/ultra and
 // returns the blackboard.wm.edu cookies. Headless runs return an error
 // wrapping ErrNeedsHuman as soon as a page asks for credentials or MFA.
+// ctx carries the r.Timeout deadline; a Browser returns once ctx is done.
 type Browser func(ctx context.Context, r BrowserRun) ([]*http.Cookie, error)
 
 // Options configure a Manager. Nil Keyring and Browser select the macOS
@@ -81,14 +82,15 @@ type Options struct {
 // a 401 launch Chrome once: the second finds the fresh session the first
 // saved and returns it.
 type Manager struct {
-	paths   Paths
-	keyring Keyring
-	browser Browser
-	noRenew bool
+	paths        Paths
+	keyring      Keyring
+	browser      Browser
+	noRenew      bool
+	renewTimeout time.Duration
 }
 
 func NewManager(o Options) *Manager {
-	m := &Manager{paths: o.Paths, keyring: o.Keyring, browser: o.Browser, noRenew: o.NoRenew}
+	m := &Manager{paths: o.Paths, keyring: o.Keyring, browser: o.Browser, noRenew: o.NoRenew, renewTimeout: RenewTimeout}
 	if m.keyring == nil {
 		m.keyring = systemKeyring{}
 	}
@@ -119,13 +121,14 @@ func (m *Manager) Current(ctx context.Context) (Session, error) {
 // got the 401; if the keychain already holds a different session, Renew
 // returns that without launching Chrome (another process renewed first).
 // Otherwise it runs headless Chrome against the profile for at most
-// RenewTimeout and saves the cookies. Every failure wraps ErrNeedsHuman.
+// RenewTimeout and saves the cookies. Every failure wraps ErrNeedsHuman,
+// except that a cancelled ctx (Ctrl-C, SIGTERM) returns the ctx error.
 func (m *Manager) Renew(ctx context.Context, stale Session) (Session, error) {
 	if m.noRenew {
 		return Session{}, fmt.Errorf("session expired and BB_NO_RENEW is set: %w", ErrNeedsHuman)
 	}
 	var fresh Session
-	err := withLock(ctx, m.paths.Lock, RenewTimeout+5*time.Second, func() error {
+	err := withLock(ctx, m.paths.Lock, m.renewTimeout+5*time.Second, func() error {
 		if cur, err := m.Current(ctx); err == nil && !cur.same(stale) {
 			fresh = cur
 			return nil
@@ -133,7 +136,7 @@ func (m *Manager) Renew(ctx context.Context, stale Session) (Session, error) {
 		if !m.HasProfile() {
 			return errors.New("session expired and there is no browser profile to renew from")
 		}
-		s, err := m.capture(ctx, BrowserRun{Profile: m.paths.Profile, Headless: true, Timeout: RenewTimeout})
+		s, err := m.capture(ctx, BrowserRun{Profile: m.paths.Profile, Headless: true, Timeout: m.renewTimeout})
 		if err != nil {
 			return fmt.Errorf("headless renewal failed: %w", err)
 		}
@@ -141,6 +144,9 @@ func (m *Manager) Renew(ctx context.Context, stale Session) (Session, error) {
 		return nil
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			return Session{}, fmt.Errorf("session renewal interrupted: %w", ctx.Err())
+		}
 		if errors.Is(err, ErrNeedsHuman) {
 			return Session{}, err
 		}
@@ -181,8 +187,12 @@ func (m *Manager) Login(ctx context.Context, o LoginOptions) (Session, error) {
 }
 
 // capture runs the browser, parses the cookies, and saves the session.
-// Callers hold the lock.
+// Callers hold the lock. r.Timeout is a deadline on the whole browser run,
+// Chrome startup included, so Renew's lock hold stays under the time a
+// waiting process gives it.
 func (m *Manager) capture(ctx context.Context, r BrowserRun) (Session, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
+	defer cancel()
 	cookies, err := m.browser(ctx, r)
 	if err != nil {
 		return Session{}, err

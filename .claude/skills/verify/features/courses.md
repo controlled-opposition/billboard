@@ -39,5 +39,5 @@ Preconditions:
 - Prefix matching looks at current courses first and only falls back to all enrollments when no current course matches. A prefix shared by a current and a past course resolves to the current one, so it is not ambiguous.
 - `--jq` and `--template` exit 2 without `--json`.
 - Course names are not HTML-escaped. A display that shows `&amp;` escaped the text itself.
-- `--jq` prints `&` as the escape `\u0026` in JSON strings. This is a known open bug, not a regression.
+- `--jq` prints `&` as it is, also inside objects and arrays.
 - Enrollments with availability `Disabled` are usually dropped courses. Blackboard returns HTTP 403 (exit 3) for their gradebook.

@@ -35,4 +35,4 @@ Preconditions:
 - `score` is `null` for unsubmitted, waiting, exempt, and some graded items. A `graded` row with no score is a real Blackboard state.
 - `kind: calculated` rows such as "Overall Grade" are totals. They often have a `display` letter and `counted: false`.
 - Exit 6 lists the unreadable courses on stderr. Exit 3 or 5 with no stdout means no course could be read.
-- `--jq` output escapes `&` in strings as a unicode escape. Compare decoded JSON, not raw text.
+- `--jq` prints `&`, `<`, and `>` as they are and fractional scores at full precision.

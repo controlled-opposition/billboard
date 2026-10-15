@@ -4,7 +4,7 @@
 //	non-TTY  -> tab-separated, one row per line, fixed default columns,
 //	            RFC 3339 UTC times, no header (stable for awk/cut)
 //	--json f -> JSON array of objects with exactly fields f
-//	--jq / --template -> applied to that JSON (go-gh pkg/jq, pkg/template)
+//	--jq / --template -> applied to that JSON (gojq, go-gh pkg/template)
 //
 // A command declares a Schema[T] once. The --json field list, its
 // validation, the TSV/table columns, and the "JSON FIELDS" section of
@@ -22,7 +22,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/cli/go-gh/v2/pkg/jq"
 	"github.com/cli/go-gh/v2/pkg/tableprinter"
 	"github.com/cli/go-gh/v2/pkg/template"
 	"github.com/spf13/cobra"
@@ -58,12 +57,14 @@ type Options struct {
 	JSON     []string
 	JQ       string
 	Template string
+	jq       *JQ
 }
 
 // Bind registers --json/--jq/--template on cmd and appends a JSON FIELDS
 // section with the schema's field docs to cmd.Long. Flag validation runs in
-// a PreRunE it installs, so a typo fails before any network request; its
-// errors go through cmd.FlagErrorFunc so the CLI classifies them as usage.
+// a PreRunE it installs, so a typo or a malformed --jq or --template fails
+// before any network request; its errors go through cmd.FlagErrorFunc so
+// the CLI classifies them as usage.
 func Bind[T any](cmd *cobra.Command, s Schema[T]) *Options {
 	o := &Options{}
 	names := make([]string, len(s.Fields))
@@ -90,11 +91,26 @@ func Bind[T any](cmd *cobra.Command, s Schema[T]) *Options {
 				return fail("unknown JSON field %q; available: %s", n, strings.Join(names, ", "))
 			}
 		}
+		if c.Flags().Changed("json") && len(o.JSON) == 0 {
+			return fail("--json needs at least one field; available: %s", strings.Join(names, ", "))
+		}
 		if (o.JQ != "" || o.Template != "") && len(o.JSON) == 0 {
 			return fail("--jq and --template require --json")
 		}
 		if o.JQ != "" && o.Template != "" {
 			return fail("use only one of --jq and --template")
+		}
+		if o.JQ != "" {
+			q, err := ParseJQ(o.JQ)
+			if err != nil {
+				return fail("%v", err)
+			}
+			o.jq = q
+		}
+		if o.Template != "" {
+			if err := template.New(io.Discard, 0, false).Parse(o.Template); err != nil {
+				return fail("invalid template %q: %v", o.Template, err)
+			}
 		}
 		return nil
 	}
@@ -163,7 +179,14 @@ func printJSON[T any](st Streams, s Schema[T], o *Options, rows []T) error {
 	}
 	switch {
 	case o.JQ != "":
-		return jq.Evaluate(&buf, st.Out, o.JQ)
+		if o.jq == nil {
+			q, err := ParseJQ(o.JQ)
+			if err != nil {
+				return err
+			}
+			o.jq = q
+		}
+		return o.jq.Run(&buf, st.Out)
 	case o.Template != "":
 		t := template.New(st.Out, st.Width, false)
 		if err := t.Parse(o.Template); err != nil {

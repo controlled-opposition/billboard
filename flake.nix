@@ -20,7 +20,7 @@
           pname = "bb";
           version = "0.1.0-${self.shortRev or self.dirtyShortRev or "unknown"}";
           src = self;
-          vendorHash = "sha256-RlDXPViGCwVa3YYLdVNtTjsrrcEiB7G9/xvajsF6e30=";
+          vendorHash = "sha256-D7Osb+K6qhQztexVloUUkHLHfvS3QqV2UMDWf58Cla0=";
           env.CGO_ENABLED = 0;
           ldflags = [
             "-s"
