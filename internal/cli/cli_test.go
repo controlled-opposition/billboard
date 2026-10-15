@@ -308,8 +308,10 @@ func TestAPISendsCookiesAndXSRFFromBbRouter(t *testing.T) {
 func TestAPIRefusesOtherHosts(t *testing.T) {
 	h := newHarness(t, "x1", "x1")
 	h.login()
-	code, out, errOut := h.run(nil, "api", "//evil.example/steal")
-	expect(t, code, out, errOut, 1, "", fmt.Sprintf("bb: path must start with / and stay on %s: \"//evil.example/steal\"\n", strings.TrimPrefix(h.srv.URL, "http://")))
+	for _, arg := range []string{"//evil.example/steal", "https://example.com/x", "http://evil.example/steal", "mailto:jdoe@example.com"} {
+		code, out, errOut := h.run(nil, "api", arg)
+		expect(t, code, out, errOut, 2, "", fmt.Sprintf("bb: api takes a path on the Blackboard host, not a URL: %q\n", arg))
+	}
 	if len(h.requests) != 0 {
 		t.Errorf("server saw %v, want no requests", h.requests)
 	}
